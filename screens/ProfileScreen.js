@@ -471,6 +471,7 @@ export default function ProfileScreen({ navigation }) {
                             {[
                                 { lang: LANGUAGES.ES, id: 'es' },
                                 { lang: LANGUAGES.EN, id: 'en' },
+                                { lang: LANGUAGES.RU, id: 'ru' },
                                 { lang: LANGUAGES.ZH, id: 'zh' },
                                 { lang: LANGUAGES.HI, id: 'hi' },
                                 { lang: LANGUAGES.AR, id: 'ar' },
