@@ -80,7 +80,16 @@ export const BEAC_MISSIONS = [
     { id: 79, name: "Yalong Bay" },
     { id: 80, name: "Dadonghai Beach" },
     { id: 81, name: "Repulse Bay" },
-    { id: 82, name: "Kenting Beach" }
+    { id: 82, name: "Kenting Beach" },
+    { id: 83, name: "Punta Negra" },
+    { id: 84, name: "San Bartolo" },
+    { id: 85, name: "Santa María" },
+    { id: 86, name: "Naplo" },
+    { id: 87, name: "Pucusana" },
+    { id: 88, name: "Asia" },
+    { id: 89, name: "Cerro Azul" },
+    { id: 90, name: "Puerto Viejo" },
+    { id: 91, name: "Tuquillo" }
 ];
 
 export const getMissionName = (id) => {
