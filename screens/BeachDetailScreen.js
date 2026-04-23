@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, Linking, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { rs, rf, SPACING, RADIUS } from '../constants/responsive';
 import { BRAND } from '../constants/theme';
 import FlagIcon from '../components/FlagIcon';
+import ReportModal from '../components/ReportModal';
 
 const BLUE_GREY = "#607d8b";
 const BLUE_GREY_BG = "rgba(96, 125, 139, 0.15)";
@@ -20,6 +21,7 @@ export default function BeachDetailScreen({ route, navigation }) {
     const { t } = useLanguage();
     const { startCleanup } = useGame();
     const { width } = useWindowDimensions();
+    const [showReportModal, setShowReportModal] = useState(false);
 
     // Si por alguna razon no llega beach data
     if (!beach) {
@@ -132,7 +134,7 @@ export default function BeachDetailScreen({ route, navigation }) {
 
                     {/* Botón de Acción Principal: Iniciar Limpieza */}
                     <TouchableOpacity
-                        style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                        style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: SPACING.lg }]}
                         onPress={handleStartCleanup}
                         activeOpacity={0.8}
                     >
@@ -145,8 +147,49 @@ export default function BeachDetailScreen({ route, navigation }) {
                         <Ionicons name="camera" size={rs(22)} color="#fff" />
                         <Text style={styles.primaryButtonText}>{t('beach_start_cleanup')}</Text>
                     </TouchableOpacity>
+
+                    {/* Fila de Reportes (Fila 2) */}
+                    <View style={{ flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md }}>
+                        {/* Botón Secundario: Enviar Reporte */}
+                        <TouchableOpacity
+                            style={[styles.primaryButton, { flex: 1, backgroundColor: '#10b981', marginTop: 0 }]}
+                            onPress={() => setShowReportModal(true)}
+                            activeOpacity={0.8}
+                        >
+                            <LinearGradient
+                                colors={['#10b981', '#059669']}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={StyleSheet.absoluteFillObject}
+                            />
+                            <Ionicons name="document-text-outline" size={rs(18)} color="#fff" />
+                            <Text style={[styles.primaryButtonText, { fontSize: rf(13) }]} numberOfLines={1}>Enviar Reporte</Text>
+                        </TouchableOpacity>
+
+                        {/* Botón Terciario: Revisar Reportes */}
+                        <TouchableOpacity
+                            style={[styles.primaryButton, { flex: 1, backgroundColor: '#f59e0b', marginTop: 0 }]}
+                            onPress={() => navigation.navigate('BeachReports', { beach })}
+                            activeOpacity={0.8}
+                        >
+                            <LinearGradient
+                                colors={['#f59e0b', '#d97706']}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={StyleSheet.absoluteFillObject}
+                            />
+                            <Ionicons name="list" size={rs(18)} color="#fff" />
+                            <Text style={[styles.primaryButtonText, { fontSize: rf(13) }]} numberOfLines={1}>Revisar Reportes</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             </ScrollView>
+
+            <ReportModal 
+                visible={showReportModal} 
+                beach={beach} 
+                onClose={() => setShowReportModal(false)} 
+            />
         </View>
     );
 }

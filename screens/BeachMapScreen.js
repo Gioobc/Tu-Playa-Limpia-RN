@@ -25,6 +25,7 @@ import CelebrationModal from '../components/CelebrationModal';
 import { mintNFT } from "../utils/blockchain/missionNFT";
 import { generateNFTAttributes } from "../utils/nftGenerator";
 import FlagIcon from "../components/FlagIcon";
+import ReportModal from '../components/ReportModal';
 import { LANGUAGE_LABELS } from "../constants/translations";
 const BLUE_GREY = "#607d8b";
 const BLUE_GREY_DARK = "#455a64";
@@ -559,7 +560,7 @@ const LANGUAGE_TO_ZONE = {
   fr: "map_all_zones",
   pt: "map_all_zones",
 };
-const BeachCard = ({ beach, isDark, onPress, t }) => {
+const BeachCard = ({ beach, isDark, onPress, onReportPress, t }) => {
   const cardBg = isDark ? "rgba(13, 58, 77, 0.6)" : "#ffffff";
   const textColor = "#ffffff";
   const subTextColor = "rgba(170, 222, 243, 0.8)";
@@ -592,7 +593,7 @@ const BeachCard = ({ beach, isDark, onPress, t }) => {
         style={styles.beachCardGradient}
       >
         <View style={styles.beachCardContent}>
-          <View style={[styles.beachCardHeader, { paddingRight: rs(40) }]}>
+          <View style={styles.beachCardHeader}>
             <View style={{ flex: 1 }}>
               <Text
                 style={[styles.beachCardTitle, { color: textColor }]}
@@ -603,6 +604,32 @@ const BeachCard = ({ beach, isDark, onPress, t }) => {
               <Text style={[styles.beachCardSubtitle, { color: subTextColor }]}>
                 {t(zoneMapping[beach.zone] || beach.zone)}
               </Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: rs(8) }}>
+              <TouchableOpacity
+                onPress={() => {
+                  const url = `https://www.google.com/maps/search/?api=1&query=${beach.lat},${beach.lng}`;
+                  if (Platform.OS !== "web")
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  Linking.openURL(url);
+                }}
+                style={[styles.mapIconBtn, { backgroundColor: BLUE_GREY }]}
+              >
+                <Ionicons name="location" size={rs(18)} color="#fff" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (Platform.OS !== "web") {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  }
+                  // Action for report
+                  if(onReportPress) onReportPress(beach);
+                }}
+                style={[styles.mapIconBtn, { backgroundColor: "#10b981" }]}
+              >
+                <Ionicons name="document-text-outline" size={rs(18)} color="#fff" />
+              </TouchableOpacity>
             </View>
           </View>
           <View style={styles.beachCardStats}>
@@ -626,36 +653,6 @@ const BeachCard = ({ beach, isDark, onPress, t }) => {
             </View>
           </View>
         </View>
-
-        {/* Absolute Buttons on the right side */}
-        <View style={{ position: 'absolute', right: SPACING.md, bottom: rs(48), gap: rs(8), alignItems: 'center', zIndex: 10 }}>
-          <TouchableOpacity
-            onPress={() => {
-              const url = `https://www.google.com/maps/search/?api=1&query=${beach.lat},${beach.lng}`;
-              if (Platform.OS !== "web")
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              Linking.openURL(url);
-            }}
-            style={[styles.mapIconBtn, { backgroundColor: BLUE_GREY }]}
-          >
-            <Ionicons name="location" size={rs(18)} color="#fff" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => {
-              if (Platform.OS !== "web") {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              }
-              // Action for report
-              if (Platform.OS === 'web') {
-                window.alert("Función de reporte en desarrollo");
-              }
-            }}
-            style={[styles.mapIconBtn, { backgroundColor: "#10b981" }]}
-          >
-            <Ionicons name="document-text-outline" size={rs(18)} color="#fff" />
-          </TouchableOpacity>
-        </View>
       </LinearGradient>
     </TouchableOpacity>
   );
@@ -671,6 +668,8 @@ export default function BeachMapScreen({ navigation }) {
   const [dropdownSearch, setDropdownSearch] = useState('');
   const [selectedCleanliness, setSelectedCleanliness] = useState('all');
   const [showCelebration, setShowCelebration] = useState(false);
+  const [selectedBeachForReport, setSelectedBeachForReport] = useState(null);
+  
   useEffect(() => {
     if (language && LANGUAGE_TO_ZONE[language]) {
       setSelectedZone(LANGUAGE_TO_ZONE[language]);
@@ -681,7 +680,7 @@ export default function BeachMapScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const numColumns = isDesktop ? 4 : 1;
-  const sidebarOffset = isDesktop ? 250 : 0;
+  const sidebarOffset = isDesktop ? rs(100) : 0;
   const padding = SPACING.lg * 2;
   const gap = SPACING.md;
   const availableWidth =
@@ -1038,7 +1037,13 @@ export default function BeachMapScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
           <View style={{ width: cardWidth }}>
-            <BeachCard beach={item} isDark={isDark} onPress={handleBeachPress} t={t} />
+            <BeachCard 
+              beach={item} 
+              isDark={isDark} 
+              onPress={handleBeachPress} 
+              onReportPress={(b) => setSelectedBeachForReport(b)}
+              t={t} 
+            />
           </View>
         )}
         ListEmptyComponent={
@@ -1056,6 +1061,11 @@ export default function BeachMapScreen({ navigation }) {
             </Text>
           </View>
         }
+      />
+      <ReportModal 
+        visible={!!selectedBeachForReport} 
+        beach={selectedBeachForReport} 
+        onClose={() => setSelectedBeachForReport(null)} 
       />
     </View>
   );
@@ -1209,7 +1219,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "flex-end",
     padding: SPACING.md,
-    position: 'relative',
   },
   beachCardContent: {
     gap: rs(4),
@@ -1219,7 +1228,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: rs(6),
-    position: 'relative',
   },
   beachCardTitle: {
     fontSize: rf(18),

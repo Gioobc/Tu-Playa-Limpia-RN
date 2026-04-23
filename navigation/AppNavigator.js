@@ -18,6 +18,7 @@ import PromotionsScreen from '../screens/PromotionsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import BeachMapScreen from '../screens/BeachMapScreen';
 import BeachDetailScreen from '../screens/BeachDetailScreen';
+import BeachReportsScreen from '../screens/BeachReportsScreen';
 import AnimatedTabIcon from './AnimatedTabIcon';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -235,6 +236,11 @@ export default function AppNavigator({ isAuthenticated, isFirstTime, onRegister,
                 name="BeachDetail"
                 component={BeachDetailScreen}
                 options={{ animation: 'slide_from_right' }}
+            />
+            <Stack.Screen
+                name="BeachReports"
+                component={BeachReportsScreen}
+                options={{ animation: 'slide_from_bottom' }}
             />
         </Stack.Navigator>
     );
