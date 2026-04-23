@@ -214,8 +214,8 @@ const NFTDetailModal = ({ visible, onClose, nft, onClaim }) => {
                             <View style={{ marginTop: SPACING.xl, width: '100%', gap: SPACING.md }}>
                                 {!address && !nft.claimed && (
                                     <Animated.View entering={FadeInDown.delay(100)} style={styles.walletWarningContent}>
-                                        <Text style={[styles.walletWarningTextDesc, { color: colors.error || '#ef4444' }]}>
-                                            {t('rewards_connect_wallet_warning') || 'Para reclamar el NFT, debes tener una wallet conectada. Puedes conectar una en Perfil.'}
+                                        <Text style={[styles.walletWarningTextDesc, { color: colors.textSecondary, textAlign: 'center', fontSize: rf(12), marginTop: SPACING.xs }]}>
+                                            {t('rewards_connect_wallet_warning') || 'No esta conectado a una billetera - No se puede reclamar en este momento'}
                                         </Text>
                                     </Animated.View>
                                 )}

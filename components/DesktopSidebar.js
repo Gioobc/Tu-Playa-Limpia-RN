@@ -125,10 +125,20 @@ export default function DesktopSidebar() {
                 )}
                 <View style={styles.userInfo}>
                     <Text style={[styles.userName, { color: colors.text }]} numberOfLines={1}>
-                        {user.name}
+                        Destiny
                     </Text>
-                    <Text style={[styles.userLevel, { color: colors.textSecondary }]}>
-                        {t('profile_level')} {level} • {t('sidebar_role', { role: user.tplTitle || 'Explorer' })}
+                    <Text 
+                        style={[styles.userLevel, { color: colors.textSecondary }]} 
+                        numberOfLines={1} 
+                    >
+                        {t('profile_level')} {level}
+                    </Text>
+                    <Text 
+                        style={[styles.userLevel, { color: colors.textSecondary }]} 
+                        numberOfLines={1} 
+                        ellipsizeMode="tail"
+                    >
+                        {t('sidebar_role', { role: (user.tplTitle || 'Explorer').replace(/[{}]/g, '') })}
                     </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={rs(16)} color={colors.textMuted} />
@@ -169,7 +179,7 @@ export default function DesktopSidebar() {
 }
 const styles = StyleSheet.create({
     container: {
-        width: SIDEBAR_WIDTH,
+        width: rs(SIDEBAR_WIDTH),
         height: '100%',
         borderRightWidth: 1,
         paddingVertical: SPACING.xl,
@@ -223,6 +233,7 @@ const styles = StyleSheet.create({
     },
     userInfo: {
         flex: 1,
+        minWidth: 0,
     },
     userName: {
         fontSize: rf(14),

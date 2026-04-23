@@ -76,6 +76,7 @@ export const REWARDS_CLAIM_LABELS = {
 };
 const translations = {
     es: {
+        rewards_connect_wallet_warning: 'No esta conectado a una billetera - No se puede reclamar en este momento',
         rewards_claim_nft: 'Reclamar NFT',
         tx_success_desc: 'La visualización en la red puede demorar hasta 30 segundos',
         auth_intro_text: '¡Colecciona puntos escaneando residuos, reclama NFTs y explora las diversas funcionalidades que Tu Playa Limpia ofrece! Cada transacción completada es transparente y verificable: De esta forma, las acciones que realices tiene un impacto ambiental reconocible por la comunidad (Clean Missions - CMISS)',
@@ -411,6 +412,7 @@ const translations = {
         scan_finish_cleanup: "Finalizar Limpieza",
     },
     en: {
+        rewards_connect_wallet_warning: 'Not connected to a wallet or cannot claim at this time',
         rewards_claim_nft: 'Claim NFT',
         tx_success_desc: 'Network visualization may take up to 30 seconds',
         auth_intro_text: 'Collect points by scanning waste, claim NFTs and explore the diverse features that Tu Playa Limpia offers! Every completed transaction is transparent and verifiable: This way, the actions you take have an environmental impact recognizable by the community (Clean Missions - CMISS)',
@@ -747,6 +749,7 @@ const translations = {
         scan_finish_cleanup: "Finish Cleanup",
     },
     zh: {
+        rewards_connect_wallet_warning: '未连接到钱包或目前无法领取',
         rewards_claim_nft: '领取 NFT',
         tx_success_desc: '网络可视化可能需要长达 30 秒',
         auth_intro_text: '通过扫描垃圾收集积分，领取 NFT 并探索 Tu Playa Limpia 提供的各种功能！完成的每笔交易都是透明且可验证的：通过这种方式，您采取的行动将产生社区认可的环境影响 (Clean Missions - CMISS)',
@@ -1070,6 +1073,7 @@ const translations = {
         scan_finish_cleanup: "结束清理",
     },
     hi: {
+        rewards_connect_wallet_warning: 'वॉलेट से कनेक्ट नहीं है या इस समय दावा नहीं कर सकता',
         rewards_claim_nft: 'NFT दव कर',
         tx_success_desc: 'नटवरक वजअलइजशन म 30 सकड तक क समय लग सकत ह',
         auth_intro_text: 'कचरा स्कैन करके अंक एकत्र करें, NFT का दावा करें और Tu Playa Limpia द्वारा प्रदान की जाने वाली विभिन्न सुविधाओं का अन्वेषण करें! प्रत्येक पूर्ण लेनदेन पारदर्शी और सत्यापन योग्य है: इस तरह, आपके द्वारा की जाने वाली कार्रवाइयों का समुदाय द्वारा पहचाने जाने वाला पर्यावरणीय प्रभाव होता है (Clean Missions - CMISS)',
@@ -1394,6 +1398,7 @@ const translations = {
         scan_finish_cleanup: "सफाई समाप्त करें",
     },
     ru: {
+        rewards_connect_wallet_warning: 'Не подключен к кошельку или не может быть востребован в данный момент',
         rewards_claim_nft: 'Запросить NFT',
         tx_success_desc: 'Визуализация в сети может занять до 30 секунд',
         auth_intro_text: 'Собирайте очки, сканируя мусор, получайте NFT и исследуйте разнообразные функции Tu Playa Limpia! Каждая завершённая транзакция прозрачна и проверяема: так ваши действия оказывают экологическое влияние, понятное сообществу (Clean Missions - CMISS)',
@@ -1708,6 +1713,7 @@ const translations = {
         scan_finish_cleanup: "Завершить уборку",
     },
     ar: {
+        rewards_connect_wallet_warning: 'غير متصل بمحفظة أو لا يمكن المطالبة في هذا الوقت',
         rewards_claim_nft: 'المطالبة بـ NFT',
         tx_success_desc: 'قد يستغرق ظهور المعاملة على الشبكة ما يصل إلى 30 ثانية',
         auth_intro_text: 'اجمع النقاط عن طريق مسح النفايات، وطالب بـ NFTs واستكشف الميزات المتنوعة التي يقدمها Tu Playa Limpia! كل معاملة مكتملة شفافة وقابلة للتحقق: وبهذه الطريقة، فإن الإجراءات التي تتخذها لها تأثير بيئي يعترف به المجتمع (Clean Missions - CMISS)',
@@ -2031,6 +2037,7 @@ const translations = {
         scan_finish_cleanup: "إنهاء التنظيف",
     },
     fr: {
+        rewards_connect_wallet_warning: 'Non connecté à un portefeuille ou impossible de réclamer pour le moment',
         rewards_claim_nft: 'Récupérer le NFT',
         tx_success_desc: 'La visualisation sur le réseau peut prendre jusqu\'à 30 secondes',
         auth_intro_text: "Collectez des points en scannant les déchets, réclamez des NFT et explorez les diverses fonctionnalités qu'offre Tu Playa Limpia ! Chaque transaction effectuée est transparente et vérifiable: De cette façon, les actions que vous entreprenez ont un impact environnemental reconnu par la communauté(Clean Missions - CMISS) ",
@@ -2355,6 +2362,7 @@ const translations = {
         scan_finish_cleanup: "Terminer le Nettoyage",
     },
     pt: {
+        rewards_connect_wallet_warning: 'Não está conectado a uma carteira ou não pode resgatar neste momento',
         rewards_claim_nft: 'Resgatar NFT',
         tx_success_desc: 'A visualização na rede pode levar até 30 segundos',
         auth_intro_text: 'Colete pontos escaneando resíduos, resgate NFTs e explore as diversas funcionalidades que o Tu Playa Limpia oferece! Cada transação concluída é transparente e verificável: Dessa forma, as ações que você realiza têm um impacto ambiental reconhecido pela comunidade (Clean Missions - CMISS)',
