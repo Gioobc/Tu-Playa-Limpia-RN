@@ -682,8 +682,7 @@ export default function BeachMapScreen({ navigation }) {
   const isDesktop = width >= 1024;
   const numColumns = isDesktop ? 4 : 1;
   const sidebarOffset = isDesktop ? 250 : 0;
-  // Match FlatList paddingHorizontal (SPACING.md * 2) and add 24px safety margin for web scrollbars
-  const padding = SPACING.md * 2 + (Platform.OS === 'web' ? 24 : 0);
+  const padding = SPACING.lg * 2;
   const gap = SPACING.md;
   const availableWidth =
     width - sidebarOffset - padding - gap * (numColumns - 1);
