@@ -2,3 +2,7 @@ fastapi
 uvicorn
 requests
 python-multipart
+pymongo
+python-dotenv
+python-jose[cryptography]
+pydantic

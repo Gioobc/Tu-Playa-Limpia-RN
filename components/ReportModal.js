@@ -1,12 +1,19 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Image, ScrollView, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Image, ScrollView, Platform, useWindowDimensions, ActivityIndicator, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
 import { rs, rf, rh, SPACING, RADIUS } from '../constants/responsive';
 import { BRAND, GRADIENTS } from '../constants/theme';
+
+// Backend API URL - CAMBIAR SEGÚN TU ENTORNO
+const API_URL = Platform.OS === 'web' 
+    ? 'http://localhost:8000' 
+    : 'http://192.168.1.100:8000'; // Cambiar IP a la de tu servidor
 
 const REPORT_TYPES = [
     { id: 'general', title: 'Reporte General', subtitle: 'Situación común', icon: 'grid-outline' },
@@ -24,6 +31,9 @@ export default function ReportModal({ visible, beach, onClose }) {
     const [selectedType, setSelectedType] = useState('general');
     const [details, setDetails] = useState('');
     const [uploadedImage, setUploadedImage] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState(null);
+    const [successMessage, setSuccessMessage] = useState(null);
 
     const pickImage = async () => {
         let result = await ImagePicker.launchImageLibraryAsync({
@@ -35,6 +45,140 @@ export default function ReportModal({ visible, beach, onClose }) {
 
         if (!result.canceled) {
             setUploadedImage(result.assets[0].uri);
+        }
+    };
+
+    const convertImageToBase64 = async (imageUri) => {
+        try {
+            const base64 = await FileSystem.readAsStringAsync(imageUri, {
+                encoding: FileSystem.Encoding.Base64,  // Corregido: EncodingType -> Encoding
+            });
+            return base64;
+        } catch (error) {
+            console.error('Error converting image:', error);
+            return null;
+        }
+    };
+
+    const getCurrentLocation = async () => {
+        try {
+            let { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                setErrorMessage('Permiso de ubicación denegado');
+                return null;
+            }
+            const location = await Location.getCurrentPositionAsync({});
+            return {
+                lat: location.coords.latitude,
+                lng: location.coords.longitude,
+            };
+        } catch (error) {
+            console.error('Error getting location:', error);
+            return {
+                lat: beach?.lat || 0,
+                lng: beach?.lng || 0,
+            };
+        }
+    };
+
+    const submitReport = async () => {
+        // Validar que haya detalles
+        if (!details.trim()) {
+            setErrorMessage('Por favor describe lo que observaste');
+            return;
+        }
+
+        setLoading(true);
+        setErrorMessage(null);
+        setSuccessMessage(null);
+
+        try {
+            // Obtener ubicación actual
+            let location = await getCurrentLocation();
+            
+            // Si no se pudo obtener ubicación, usar la del beach como fallback
+            if (!location || typeof location.lat !== 'number' || typeof location.lng !== 'number') {
+                location = {
+                    lat: parseFloat(beach?.lat) || 0,
+                    lng: parseFloat(beach?.lng) || 0,
+                };
+            }
+
+            // Convertir imagen a base64 si existe
+            let imageBase64 = null;
+            if (uploadedImage) {
+                imageBase64 = await convertImageToBase64(uploadedImage);
+            }
+
+            // Construir objeto del reporte
+            const reportData = {
+                report_type: selectedType,
+                msg: details.trim(),  // Cambiado de 'details' a 'msg'
+                beach_name: beach.name,
+                beach_id: beach.id ? String(beach.id) : null,  // Convertir a string
+                location: {
+                    lat: location.lat,
+                    lng: location.lng,
+                    beach_name: beach.name,
+                    sector: beach.zone || 'General',
+                },
+                image_uri: imageBase64, // Base64 de la imagen
+                user_id: null, // Cambiar por user_id real si tienes autenticación
+                user_name: 'Anonymous',
+            };
+
+            console.log('Sending report data:', reportData);
+
+            // Enviar al backend
+            const response = await fetch(`${API_URL}/api/reports`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(reportData),
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Response error:', response.status, errorText);
+                throw new Error(`Error ${response.status}: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                setSuccessMessage(`✅ Reporte enviado exitosamente!\nID: ${result.report_id}`);
+                
+                // Limpiar formulario después de 2 segundos
+                setTimeout(() => {
+                    setDetails('');
+                    setUploadedImage(null);
+                    setSelectedType('general');
+                    setSuccessMessage(null);
+                    onClose();
+                }, 2000);
+
+                // Mostrar alerta de éxito
+                if (Platform.OS === 'web') {
+                    alert(`✅ ¡Reporte enviado exitosamente!\n\nID del reporte: ${result.report_id}`);
+                } else {
+                    Alert.alert('Éxito', `¡Reporte enviado exitosamente!\n\nID: ${result.report_id}`);
+                }
+            } else {
+                throw new Error(result.message || 'Error desconocido');
+            }
+        } catch (error) {
+            console.error('Error submitting report:', error);
+            const errorMsg = error.message || 'Error al enviar el reporte. Intenta de nuevo.';
+            setErrorMessage(errorMsg);
+
+            if (Platform.OS === 'web') {
+                alert(`❌ Error: ${errorMsg}`);
+            } else {
+                Alert.alert('Error', errorMsg);
+            }
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -174,23 +318,51 @@ export default function ReportModal({ visible, beach, onClose }) {
                                 </View>
 
                                 {/* Submit Button */}
-                                <TouchableOpacity onPress={() => {
-                                    onClose();
-                                    if(Platform.OS === 'web') window.alert("¡Reporte enviado exitosamente!");
-                                }} style={{ marginTop: 'auto', paddingTop: SPACING.xl }}>
-                                    <LinearGradient
-                                        colors={GRADIENTS.primary}
-                                        style={styles.submitButton}
-                                        start={{ x: 0, y: 0 }}
-                                        end={{ x: 1, y: 0 }}
+                                <View style={{ marginTop: 'auto', paddingTop: SPACING.xl }}>
+                                    {/* Error Message */}
+                                    {errorMessage && (
+                                        <View style={[styles.messageBox, { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444', borderWidth: 1 }]}>
+                                            <Ionicons name="alert-circle" size={rs(18)} color="#ef4444" />
+                                            <Text style={[styles.messageText, { color: '#dc2626' }]}>{errorMessage}</Text>
+                                        </View>
+                                    )}
+
+                                    {/* Success Message */}
+                                    {successMessage && (
+                                        <View style={[styles.messageBox, { backgroundColor: 'rgba(34, 197, 94, 0.1)', borderColor: '#22c55e', borderWidth: 1 }]}>
+                                            <Ionicons name="checkmark-circle" size={rs(18)} color="#22c55e" />
+                                            <Text style={[styles.messageText, { color: '#16a34a' }]}>{successMessage}</Text>
+                                        </View>
+                                    )}
+
+                                    <TouchableOpacity 
+                                        onPress={submitReport} 
+                                        disabled={loading}
+                                        style={{ opacity: loading ? 0.6 : 1 }}
                                     >
-                                        <Text style={styles.submitText}>Enviar Reporte</Text>
-                                        <Ionicons name="send" size={rs(18)} color="#fff" />
-                                    </LinearGradient>
+                                        <LinearGradient
+                                            colors={loading ? ['#9ca3af', '#9ca3af'] : GRADIENTS.primary}
+                                            style={styles.submitButton}
+                                            start={{ x: 0, y: 0 }}
+                                            end={{ x: 1, y: 0 }}
+                                        >
+                                            {loading ? (
+                                                <>
+                                                    <ActivityIndicator size="small" color="#fff" />
+                                                    <Text style={styles.submitText}>Enviando...</Text>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Text style={styles.submitText}>Enviar Reporte</Text>
+                                                    <Ionicons name="send" size={rs(18)} color="#fff" />
+                                                </>
+                                            )}
+                                        </LinearGradient>
+                                    </TouchableOpacity>
                                     <Text style={[styles.termsText, { color: colors.textMuted }]}>
                                         AL ENVIAR, ACEPTAS NUESTROS TÉRMINOS DE PRESERVACIÓN COSTERA
                                     </Text>
-                                </TouchableOpacity>
+                                </View>
                             </View>
                         </View>
                     </ScrollView>
@@ -404,5 +576,18 @@ const styles = StyleSheet.create({
         fontSize: rf(9),
         textAlign: 'center',
         letterSpacing: 0.5,
-    }
+    },
+    messageBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: SPACING.md,
+        borderRadius: RADIUS.md,
+        marginBottom: SPACING.md,
+        gap: SPACING.sm,
+    },
+    messageText: {
+        flex: 1,
+        fontSize: rf(12),
+        fontWeight: '500',
+    },
 });

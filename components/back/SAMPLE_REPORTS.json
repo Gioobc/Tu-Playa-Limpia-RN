@@ -1,0 +1,122 @@
+{
+  "sample_report_data": {
+    "_id": "507f1f77bcf86cd799439011",
+    "report_type": "trash",
+    "msg": "Se encontró una gran cantidad de basura plástica en la arena del sector norte de la playa. Aproximadamente 15-20 bolsas de plástico y botellas dispersas.",  # Cambiado de 'details' a 'msg'
+    "beach_name": "Playa Miramar",
+    "beach_id": "beach_miramar_001",
+    "location": {
+      "lat": 10.2345678,
+      "lng": -75.5432109,
+      "beach_name": "Playa Miramar",
+      "sector": "Sector Norte"
+    },
+    "image_uri": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8VAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA8A/9k=",
+    "user_id": "user_5f7a8b9c0d1e2f3g4h5",
+    "user_name": "Carlos García",
+    "timestamp": "2024-04-23T10:30:45.123Z",
+    "created_at": "2024-04-23T10:30:45.123Z",
+    "status": "pending",
+    "saved_at": "2024-04-23T10:30:45.678Z"
+  },
+  "additional_examples": [
+    {
+      "_id": "507f1f77bcf86cd799439012",
+      "report_type": "animal",
+      "msg": "Se observó un ave marina muerta en la orilla. Parece ser un pelícano. Requiere atención.",  # Cambiado de 'details' a 'msg'
+      "beach_name": "Playa Miramar",
+      "location": {
+        "lat": 10.2348,
+        "lng": -75.5435,
+        "beach_name": "Playa Miramar",
+        "sector": "Sector Centro"
+      },
+      "user_name": "María Rodríguez",
+      "timestamp": "2024-04-23T09:15:20.456Z",
+      "status": "validated"
+    },
+    {
+      "_id": "507f1f77bcf86cd799439013",
+      "report_type": "state",
+      "msg": "Condiciones de la playa: agua clara, arena limpia, clima soleado. Excelente para visitas.",  # Cambiado de 'details' a 'msg'
+      "beach_name": "Playa Miramar",
+      "location": {
+        "lat": 10.2350,
+        "lng": -75.5430,
+        "beach_name": "Playa Miramar",
+        "sector": "General"
+      },
+      "user_name": "Anonymous",
+      "timestamp": "2024-04-23T08:00:00.000Z",
+      "status": "validated"
+    },
+    {
+      "_id": "507f1f77bcf86cd799439014",
+      "report_type": "general",
+      "msg": "Avistamiento de algas pardas en el agua, probablemente sargazo. Necesita monitoreo.",  # Cambiado de 'details' a 'msg'
+      "beach_name": "Playa Miramar",
+      "location": {
+        "lat": 10.2342,
+        "lng": -75.5438,
+        "beach_name": "Playa Miramar",
+        "sector": "Sector Sur"
+      },
+      "user_name": "Juan Pérez",
+      "timestamp": "2024-04-22T16:45:30.789Z",
+      "status": "pending"
+    }
+  ],
+  "mongodb_collection_info": {
+    "database": "tplreportes",
+    "collection": "datosreportes",
+    "indexes": [
+      {
+        "field": "timestamp",
+        "type": "ascending"
+      },
+      {
+        "field": "beach_name",
+        "type": "ascending"
+      },
+      {
+        "field": "report_type",
+        "type": "ascending"
+      },
+      {
+        "field": "location",
+        "type": "2dsphere",
+        "description": "Para búsquedas geoespaciales"
+      }
+    ]
+  },
+  "usage_examples": {
+    "guardar_reporte": {
+      "metodo": "POST",
+      "url": "http://localhost:8000/api/reports",
+      "body": {
+        "report_type": "trash",
+        "details": "Se encontró mucha basura",
+        "beach_name": "Playa Miramar",
+        "location": {
+          "lat": 10.2345,
+          "lng": -75.5432,
+          "beach_name": "Playa Miramar",
+          "sector": "General"
+        },
+        "user_name": "Tu Nombre"
+      }
+    },
+    "obtener_reportes_playa": {
+      "metodo": "GET",
+      "url": "http://localhost:8000/api/reports/beach/Playa%20Miramar?limit=50"
+    },
+    "obtener_todos_reportes": {
+      "metodo": "GET",
+      "url": "http://localhost:8000/api/reports?limit=100"
+    },
+    "estado_base_datos": {
+      "metodo": "GET",
+      "url": "http://localhost:8000/api/reports/status"
+    }
+  }
+}
