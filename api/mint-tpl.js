@@ -1,8 +1,8 @@
 import { ethers } from 'ethers';
 
-// zkSYS PoB Devnet Configuration
-const RPC_URL = process.env.BLOCKCHAIN_RPC_URL || 'https://rpc-pob.dev11.top';
-const CONTRACT_ADDRESS = process.env.EXPO_PUBLIC_TPL_TOKEN_ADDRESS || "0xdbe03da0a41ac28939876416773bec40c3b6a042";
+// zkTanenbaum Testnet Configuration
+const RPC_URL = process.env.BLOCKCHAIN_RPC_URL || 'https://rpc-zk.tanenbaum.io/';
+const CONTRACT_ADDRESS = process.env.EXPO_PUBLIC_TPL_TOKEN_ADDRESS || "0x6b5A158bD2558F5C484efE7dFC9E330213e8c6e8";
 const ADMIN_PRIVATE_KEY = process.env.EXPO_PUBLIC_ADMIN_PRIVATE_KEY;
 
 const ABI = [

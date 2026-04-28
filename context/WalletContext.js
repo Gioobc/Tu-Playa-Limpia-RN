@@ -8,11 +8,11 @@ import { useEffect } from "react"
 const WalletContext = createContext()
 
 const NETWORK = {
-  chainId: 57042,
-  chainIdHex: "0xded2",
-  chainName: "zkSYS PoB Devnet",
-  rpcUrl: "https://rpc-pob.dev11.top",
-  blockExplorerUrl: "https://explorer-pob.dev11.top",
+  chainId: 57057,
+  chainIdHex: "0xDEE1",
+  chainName: "zkTanenbaum Testnet",
+  rpcUrl: "https://rpc-zk.tanenbaum.io/",
+  blockExplorerUrl: "https://explorer-zk.tanenbaum.io/",
   nativeCurrency: {
     name: "TSYS",
     symbol: "TSYS",

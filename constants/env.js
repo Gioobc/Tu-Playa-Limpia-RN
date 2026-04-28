@@ -7,15 +7,15 @@ const ENV = {
   ROBOFLOW_MODEL: process.env.EXPO_PUBLIC_ROBOFLOW_MODEL || "ocean-waste/2",
   API_BASE_URL: process.env.API_BASE_URL || "",
 
-  // zkSYS PoB Devnet Configuration
-  BLOCKCHAIN_CHAIN_ID: 57042,
-  BLOCKCHAIN_CHAIN_ID_HEX: '0xDED2',
-  BLOCKCHAIN_RPC_URL: process.env.BLOCKCHAIN_RPC_URL || 'https://rpc-pob.dev11.top',
-  BLOCKCHAIN_CHAIN_NAME: 'zkSYS PoB Devnet',
+  // zkTanenbaum Testnet Configuration
+  BLOCKCHAIN_CHAIN_ID: 57057,
+  BLOCKCHAIN_CHAIN_ID_HEX: '0xDEE1',
+  BLOCKCHAIN_RPC_URL: process.env.BLOCKCHAIN_RPC_URL || 'https://rpc-zk.tanenbaum.io/',
+  BLOCKCHAIN_CHAIN_NAME: 'zkTanenbaum Testnet',
   BLOCKCHAIN_NATIVE_CURRENCY_NAME: 'Testnet Syscoin',
   BLOCKCHAIN_NATIVE_CURRENCY_SYMBOL: 'TSYS',
   BLOCKCHAIN_NATIVE_CURRENCY_DECIMALS: 18,
-  BLOCKCHAIN_BLOCK_EXPLORER_URL: process.env.BLOCKCHAIN_BLOCK_EXPLORER_URL || 'https://explorer-pob.dev11.top',
+  BLOCKCHAIN_BLOCK_EXPLORER_URL: process.env.BLOCKCHAIN_BLOCK_EXPLORER_URL || 'https://explorer-zk.tanenbaum.io/',
 };
 // Validar variables críticas
 const validateEnv = () => {

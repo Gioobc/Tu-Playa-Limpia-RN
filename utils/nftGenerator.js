@@ -181,7 +181,7 @@ const connectMetaMaskDirect = async () => {
   if (!ethProvider?.isMetaMask) throw new Error("MetaMask no detectada en este navegador.");
 
   const Web3Provider = ethers.providers?.Web3Provider || ethers.BrowserProvider;
-  const provider = new Web3Provider(ethProvider);
+  const provider = new Web3Provider(ethProvider, "any");
   await ethProvider.request({ method: 'eth_requestAccounts' });
 
   const currentChainId = await ethProvider.request({ method: 'eth_chainId' });
@@ -255,7 +255,7 @@ const buildFreshProvider = async (wcProvider) => {
       const current = parseInt(raw, 16);
       if (current === NETWORK_CONFIG.chainId) {
         const Web3Provider = ethers.providers?.Web3Provider || ethers.BrowserProvider;
-        const p = new Web3Provider(wcProvider);
+        const p = new Web3Provider(wcProvider, "any");
         return p;
       }
       console.log(`⏳ Esperando red correcta... intento ${i + 1}/10 (actual: ${current})`);
@@ -379,7 +379,7 @@ const connectViaWalletConnect = async () => {
   // ✅ Construir provider ethers directamente — no hace falta buildFreshProvider
   //    con reintentos porque la sesión WC ya tiene el chainId correcto.
   const Web3Provider = ethers.providers?.Web3Provider || ethers.BrowserProvider;
-  const provider = new Web3Provider(wcProvider);
+  const provider = new Web3Provider(wcProvider, "any");
   const accounts = await provider.listAccounts();
   if (!accounts || accounts.length === 0)
     throw new Error("No hay cuenta conectada en la wallet.");
@@ -410,7 +410,7 @@ const connectViaPali = async () => {
   if (!ethProvider) throw new Error("Pali Wallet no detectada. Por favor, asegúrate de tener instalada la extensión de Pali.");
 
   const Web3Provider = ethers.providers?.Web3Provider || ethers.BrowserProvider;
-  const provider = new Web3Provider(ethProvider);
+  const provider = new Web3Provider(ethProvider, "any");
   await ethProvider.request({ method: "eth_requestAccounts" });
 
   const currentChainId = await ethProvider.request({ method: "eth_chainId" });
@@ -514,32 +514,15 @@ export const handleClaim = async (
       if (!adminPrivateKey)
         throw new Error("adminMintViaBackend no fue provisto y no hay clave admin en .env");
 
-      // Definimos la red manualmente para que ethers NO haga fetch al RPC
-      // para detectarla (eso falla por CORS). Con esto evitamos _uncachedDetectNetwork.
-      const zkSysNetwork = {
-        chainId: NETWORK_CONFIG.chainId,
-        name: NETWORK_CONFIG.chainName,
-      };
-
-      // Desktop: _activeWcProvider está seteado → sus llamadas RPC van por el
-      //   relay WebSocket de WalletConnect (sin CORS).
-      // Móvil: _activeWcProvider es null → usamos window.ethereum directamente,
-      //   que está dentro del browser de MetaMask (sin CORS).
-      //   relay WebSocket de WalletConnect (sin CORS).
-      // Móvil: _activeWcProvider es null → usamos window.ethereum directamente,
-      //   que está dentro del browser de MetaMask (sin CORS).
-      const rawTransport = _activeWcProvider ? _activeWcProvider : window.ethereum;
-      const Web3Provider = ethers.providers?.Web3Provider || ethers.BrowserProvider;
-      const adminTransport = new Web3Provider(rawTransport, zkSysNetwork);
+      // Conectamos directamente al RPC de zkTanenbaum para evitar que la wallet del usuario
+      // rutée la transacción de admin hacia otra red (como Ethereum Mainnet).
+      const adminTransport = new ethers.providers.JsonRpcProvider(NETWORK_CONFIG.rpcUrl);
       const adminWallet = new ethers.Wallet(adminPrivateKey, adminTransport);
       const abi = MissionNFT.abi || MissionNFT;
       const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, adminWallet);
 
-      // gasPrice fijo — evita la llamada eth_gasPrice al RPC desde el browser.
-      const gasPrice = ethers.utils.parseUnits('1', 'gwei');
-
       console.log("\u23F3 Enviando minteo desde Admin (modo dev)...");
-      const tx = await contract.adminMint(recipient, missionId, tokenURI, { gasPrice });
+      const tx = await contract.adminMint(recipient, missionId, tokenURI);
       await tx.wait();
       txHash = tx.hash;
     }

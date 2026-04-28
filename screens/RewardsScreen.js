@@ -67,7 +67,7 @@ const CelebrationModal = ({ visible, onClose, nft }) => {
 };
 
 // ─── Modal de confirmación de transacción ──────────────────────────────────
-const EXPLORER_URL = 'https://explorer-pob.dev11.top';
+const EXPLORER_URL = 'https://explorer-zk.tanenbaum.io';
 
 const TxConfirmModal = ({ visible, txHash, onClose }) => {
     const { colors, shadows, isDark } = useTheme();
