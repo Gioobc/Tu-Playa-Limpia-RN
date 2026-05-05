@@ -8,8 +8,9 @@ MONGODB_URI = os.getenv(
     "MONGODB_URI",
     "mongodb+srv://hola:hola123456@cluster0.uc0vvkm.mongodb.net/"
 )
-DATABASE_NAME = "TPLReportes"  # Match existing database case
+DATABASE_NAME = "TPLPlayas"
 REPORTS_COLLECTION = "datosreportes"
+BEACHES_COLLECTION = "DatosPlaya"
 
 # Server Configuration
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
