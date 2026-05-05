@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateNFTAttributes } from '../utils/nftGenerator';
 import { fetchUserNFTs } from '../utils/blockchain/missionNFT';
 import { fetchTPLBalance, fetchUserTitle } from '../utils/blockchain/tplToken';
+import { useAuth } from './AuthContext';
 const GameContext = createContext();
 export const useGame = () => useContext(GameContext);
 const GAME_KEYS = {
@@ -14,6 +15,7 @@ const GAME_KEYS = {
     CLEANUP_HISTORY: '@tpl_game_cleanup_history',
 };
 export const GameProvider = ({ children }) => {
+    const { mongoUserId, setUsername: setAuthUsername } = useAuth();
     const [points, setPoints] = useState(0);
     const [scannedItems, setScannedItems] = useState({ bottles: 0, cans: 0, total: 0 });
     const [nfts, setNfts] = useState([]);
@@ -352,8 +354,57 @@ export const GameProvider = ({ children }) => {
         }
     };
 
-    const updateUserProfile = (updates) => {
-        setUser(prev => ({ ...prev, ...updates }));
+    const updateUserProfile = async (updates) => {
+        // Update local state
+        setUser(prev => {
+            const updated = { ...prev, ...updates };
+            // Persist user data to AsyncStorage
+            AsyncStorage.setItem(GAME_KEYS.USER, JSON.stringify(updated)).catch(err => 
+                console.warn('Error persisting user data:', err)
+            );
+            return updated;
+        });
+
+        // Keep AuthContext username in sync if name changes
+        if (updates.name && setAuthUsername) {
+            setAuthUsername(updates.name);
+            AsyncStorage.setItem('@tpl_username', updates.name).catch(err =>
+                console.warn('Error persisting auth username:', err)
+            );
+        }
+        
+        // ✅ Sync with backend if mongoUserId is available
+        if (mongoUserId) {
+            try {
+                const apiUrl = process.env.API_BASE_URL || 'http://localhost:8000';
+                
+                const backendUpdates = { ...updates };
+                if (updates.avatar) {
+                    backendUpdates.avatar_url = updates.avatar;
+                    delete backendUpdates.avatar;
+                }
+                if (updates.name) {
+                    backendUpdates.username = updates.name;
+                    delete backendUpdates.name;
+                }
+                
+                const response = await fetch(`${apiUrl}/api/users/${mongoUserId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(backendUpdates),
+                });
+                
+                if (!response.ok) {
+                    console.warn('⚠️ Error syncing profile to backend:', response.status);
+                } else {
+                    console.log('✅ Profile synced to backend');
+                }
+            } catch (error) {
+                console.warn('⚠️ Error updating user profile in backend:', error.message);
+            }
+        }
     };
     return (
         <GameContext.Provider value={{
