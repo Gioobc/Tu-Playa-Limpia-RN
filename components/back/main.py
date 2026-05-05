@@ -245,6 +245,35 @@ async def get_all_reports(limit: int = 100):
         raise HTTPException(500, f"Error al obtener reportes: {str(e)}")
 
 
+@app.get("/api/beaches")
+async def get_beaches():
+    """
+    Obtener todas las playas de TPLPlayas > DatosPlaya
+    """
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+        
+        beaches = db_connection.get_all_beaches()
+        
+        # Convertir ObjectId a string para JSON
+        for beach in beaches:
+            beach["_id"] = str(beach["_id"])
+        
+        logger.info(f"🏖️ Se obtuvieron {len(beaches)} playas")
+        
+        return {
+            "success": True,
+            "count": len(beaches),
+            "beaches": beaches
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error obteniendo playas: {str(e)}")
+        raise HTTPException(500, f"Error al obtener playas: {str(e)}")
+
 @app.get("/api/reports/status")
 async def get_database_status():
     """

@@ -1,7 +1,7 @@
 import logging
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
-from config import MONGODB_URI, DATABASE_NAME, REPORTS_COLLECTION
+from config import MONGODB_URI, DATABASE_NAME, REPORTS_COLLECTION, BEACHES_DB_NAME, BEACHES_COLLECTION
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -112,6 +112,17 @@ class MongoDBConnection:
             return reports
         except Exception as e:
             logger.error(f"❌ Error obteniendo reportes: {e}")
+            return []
+
+    def get_all_beaches(self):
+        """Obtener todas las playas de TPLPlayas"""
+        try:
+            db_beaches = self._client[BEACHES_DB_NAME]
+            collection = db_beaches[BEACHES_COLLECTION]
+            beaches = list(collection.find({}))
+            return beaches
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo playas: {e}")
             return []
 
     def close(self):
