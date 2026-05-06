@@ -41,6 +41,7 @@ export function AuthProvider({ children }) {
     const [isFirstTime, setIsFirstTime] = useState(true);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [accountId, setAccountId] = useState(null);
+    const [mongoUserId, setMongoUserId] = useState(null);
     const [username, setUsername] = useState('');
     // Check existing account & session on mount
     useEffect(() => {
@@ -57,6 +58,7 @@ export function AuthProvider({ children }) {
                     setIsFirstTime(false);
                     const parsed = JSON.parse(accountData);
                     setAccountId(parsed.accountId);
+                    setMongoUserId(parsed.mongoUserId || null);
                     setUsername(savedUsername || '');
                     // Check for active session ("cookie")
                     // MODIFIED: Even if session exists, we REQUIRE drawing on refresh for security
@@ -87,10 +89,43 @@ export function AuthProvider({ children }) {
             const newAccountId = `0x${timestamp}${random}`.slice(0, 42).padEnd(42, '0');
             const drawingHashed = await hashDrawing(drawingData);
             const passwordHashed = await hashExportPassword(password);
+            
+            // ✅ Register user in backend API (MongoDB)
+            const apiUrl = process.env.API_BASE_URL || 'http://localhost:8000';
+            const registerResponse = await fetch(`${apiUrl}/api/users/register`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: cleanName,
+                    password: password,
+                    initials: cleanName.substring(0, 2).toUpperCase(),
+                    avatar_url: null,
+                    tpl_title: null,
+                    points: 0,
+                    level: 1,
+                    total_scans: 0,
+                    bottle_scans: 0,
+                    can_scans: 0,
+                    has_changed_username: false,
+                    has_awarded_profile_visit: false,
+                }),
+            });
+
+            if (!registerResponse.ok) {
+                const errorData = await registerResponse.json().catch(() => ({}));
+                throw new Error(errorData.detail || `Backend error: ${registerResponse.status}`);
+            }
+
+            const backendData = await registerResponse.json();
+            console.log('✅ User registered in backend:', backendData.user_id);
+
             const accountData = {
                 accountId: newAccountId,
                 createdAt: new Date().toISOString(),
                 version: 2,
+                mongoUserId: backendData.user_id,
             };
             await Promise.all([
                 setSecureItem(KEYS.DRAWING_HASH, drawingHashed),
@@ -101,6 +136,7 @@ export function AuthProvider({ children }) {
                 AsyncStorage.setItem(KEYS.REGISTRATION_DATE, new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })),
             ]);
             setAccountId(newAccountId);
+            setMongoUserId(backendData.user_id);
             setUsername(cleanName);
             setIsFirstTime(false);
             setIsAuthenticated(true);
@@ -272,6 +308,7 @@ export function AuthProvider({ children }) {
         isFirstTime,
         isAuthenticated,
         accountId,
+        mongoUserId,
         username,
         register,
         login,
@@ -281,7 +318,8 @@ export function AuthProvider({ children }) {
         importAccount,
         saveProfile,
         loadProfile,
-    }), [isLoading, isFirstTime, isAuthenticated, accountId, username, register, login, logout, verifySessionPassword, exportAccount, importAccount, saveProfile, loadProfile]);
+        setUsername,
+    }), [isLoading, isFirstTime, isAuthenticated, accountId, mongoUserId, username, register, login, logout, verifySessionPassword, exportAccount, importAccount, saveProfile, loadProfile, setUsername]);
     return (
         <AuthContext.Provider value={value}>
             {children}

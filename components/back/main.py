@@ -1,4 +1,5 @@
-import os, hashlib, requests
+import os, hashlib, requests, uuid
+import bcrypt
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,9 +55,139 @@ class ReportData(BaseModel):
     user_id: Optional[str] = Field(None, max_length=50)
     user_name: Optional[str] = Field("Anonymous", max_length=100)
 
+class UserBase(BaseModel):
+    username: str = Field(..., max_length=60)
+    initials: Optional[str] = Field(None, max_length=10)
+    avatar_url: Optional[str] = None
+    tpl_title: Optional[str] = Field(None, max_length=100)
+    points: Optional[int] = 0
+    level: Optional[int] = 1
+    total_scans: Optional[int] = 0
+    bottle_scans: Optional[int] = 0
+    can_scans: Optional[int] = 0
+    has_changed_username: Optional[bool] = False
+    has_awarded_profile_visit: Optional[bool] = False
+
+class UserCreate(UserBase):
+    password: str = Field(..., min_length=6)
+
+class UserLogin(BaseModel):
+    username: str = Field(..., max_length=60)
+    password: str = Field(..., min_length=6)
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    except Exception:
+        return False
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "model": MODEL_ID}
+
+@app.post("/api/users/register")
+async def register_user(user: UserCreate):
+    """Registrar un usuario nuevo en MongoDB con contraseña hasheada."""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        existing = db_connection.find_user_by_username(user.username)
+        if existing:
+            raise HTTPException(409, "El nombre de usuario ya está en uso")
+
+        user_data = user.dict(exclude={"password"})
+        user_data["_id"] = str(uuid.uuid4())
+        user_data["password_hash"] = hash_password(user.password)
+        user_data["join_date"] = datetime.utcnow().isoformat()
+        user_data["created_at"] = datetime.utcnow().isoformat()
+
+        user_id = db_connection.insert_user(user_data)
+
+        return {
+            "success": True,
+            "message": "Usuario registrado correctamente",
+            "user_id": user_id,
+            "username": user.username
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error registrando usuario: {str(e)}")
+        raise HTTPException(500, f"Error al registrar usuario: {str(e)}")
+
+@app.post("/api/users/login")
+async def login_user(credentials: UserLogin):
+    """Verificar credenciales de usuario y devolver datos básicos sin contraseña."""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        user_doc = db_connection.find_user_by_username(credentials.username)
+        if not user_doc or not verify_password(credentials.password, user_doc.get("password_hash", "")):
+            raise HTTPException(401, "Credenciales inválidas")
+
+        user_doc.pop("password_hash", None)
+        if "_id" in user_doc:
+            user_doc["_id"] = str(user_doc["_id"])
+
+        return {
+            "success": True,
+            "message": "Inicio de sesión exitoso",
+            "user": user_doc
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error en login de usuario: {str(e)}")
+        raise HTTPException(500, f"Error al iniciar sesión: {str(e)}")
+
+@app.put("/api/users/{user_id}")
+async def update_user(user_id: str, updates: dict):
+    """Actualizar campos del usuario (avatar_url, nombre, puntos, etc.)"""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        # Campos permitidos para actualizar
+        allowed_fields = {
+            "avatar_url", "username", "tpl_title", "points", "level",
+            "total_scans", "bottle_scans", "can_scans", "has_changed_username",
+            "has_awarded_profile_visit", "initials"
+        }
+        
+        # Filtrar solo campos permitidos
+        filtered_updates = {k: v for k, v in updates.items() if k in allowed_fields}
+        
+        if not filtered_updates:
+            raise HTTPException(400, "No valid fields to update")
+
+        filtered_updates["updated_at"] = datetime.utcnow().isoformat()
+        
+        db_connection.update_user(user_id, filtered_updates)
+        
+        # Obtener el usuario actualizado
+        updated_user = db_connection.find_user_by_id(user_id)
+        if updated_user:
+            updated_user.pop("password_hash", None)
+            if "_id" in updated_user:
+                updated_user["_id"] = str(updated_user["_id"])
+        
+        return {
+            "success": True,
+            "message": "Usuario actualizado correctamente",
+            "user": updated_user
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error actualizando usuario: {str(e)}")
+        raise HTTPException(500, f"Error al actualizar usuario: {str(e)}")
 
 @app.post("/scan")
 async def scan(request: Request):
