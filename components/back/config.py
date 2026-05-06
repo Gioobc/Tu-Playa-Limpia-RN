@@ -11,6 +11,10 @@ MONGODB_URI = os.getenv(
 DATABASE_NAME = "TPLReportes"  # Match existing database case
 REPORTS_COLLECTION = "datosreportes"
 
+# Playas DB
+BEACHES_DB_NAME = "TPLPlayas"
+BEACHES_COLLECTION = "DatosPlaya"
+
 # Server Configuration
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))
