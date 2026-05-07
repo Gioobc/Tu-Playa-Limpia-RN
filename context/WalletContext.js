@@ -228,7 +228,16 @@ export function WalletProvider({ children }) {
 
       const Web3Provider = ethers.providers?.Web3Provider || ethers.BrowserProvider;
       const ethersProvider = new Web3Provider(ethProvider);
-      await ethProvider.request({ method: "eth_requestAccounts" });
+      
+      try {
+        await ethProvider.request({ method: "eth_requestAccounts" });
+      } catch (reqErr) {
+        if (reqErr.code === 4100) {
+          alert("Pali Wallet está bloqueada. Por favor, abre la extensión, ingresa tu contraseña y vuelve a hacer clic en conectar.");
+          return;
+        }
+        throw reqErr;
+      }
 
       await switchNetwork(ethProvider);
 
