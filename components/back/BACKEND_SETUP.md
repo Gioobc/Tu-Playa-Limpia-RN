@@ -14,7 +14,7 @@ pip install -r requirements.txt
 Crear un archivo `.env` en la carpeta `components/back/`:
 
 ```env
-MONGODB_URI=mongodb+srv://hola:hola123456@cluster0.uc0vvkm.mongodb.net/
+MONGODB_URI=mongodb+srv://USUARIO:PASSWORD@cluster.mongodb.net/DATABASE
 DATABASE_NAME=tplreportes
 API_PORT=8000
 ROBOFLOW_API_KEY=tu_clave_api

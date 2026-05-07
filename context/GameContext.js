@@ -5,6 +5,7 @@ import { generateNFTAttributes } from '../utils/nftGenerator';
 import { fetchUserNFTs } from '../utils/blockchain/missionNFT';
 import { fetchTPLBalance, fetchUserTitle } from '../utils/blockchain/tplToken';
 import { useAuth } from './AuthContext';
+import ENV from '../constants/env';
 const GameContext = createContext();
 export const useGame = () => useContext(GameContext);
 const GAME_KEYS = {
@@ -150,7 +151,7 @@ export const GameProvider = ({ children }) => {
                 console.log('📦 AsyncStorage y Blockchain vacíos, buscando NFTs en MongoDB...');
                 try {
                     if (walletAddress) {
-                        const appUrl = process.env.EXPO_PUBLIC_APP_URL || 'https://tu-playa-limpia.vercel.app';
+                        const appUrl = ENV.APP_URL;
                         const resp = await fetch(`${appUrl}/api/nfts?wallet=${walletAddress}`);
                         if (resp.ok) {
                             const { nfts: backupNfts } = await resp.json();
@@ -334,8 +335,7 @@ export const GameProvider = ({ children }) => {
         try {
             console.log(`📡 Iniciando sincronización de ${mintAmount} TPL a la Blockchain...`);
             // Prioridad: Variable de entorno > Localhost (si estamos en dev) > Fallback Vercel
-            const appUrl = process.env.EXPO_PUBLIC_APP_URL || 
-                          (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://tu-playa-limpia.vercel.app');
+            const appUrl = ENV.APP_URL;
 
             const response = await fetch(`${appUrl}/api/mint-tpl`, {
                 method: 'POST',
@@ -388,7 +388,7 @@ export const GameProvider = ({ children }) => {
         // ✅ Sync with backend if mongoUserId is available
         if (mongoUserId) {
             try {
-                const apiUrl = process.env.API_BASE_URL || 'http://localhost:8000';
+                const apiUrl = ENV.API_BASE_URL;
                 
                 const backendUpdates = { ...updates };
                 if (updates.avatar) {

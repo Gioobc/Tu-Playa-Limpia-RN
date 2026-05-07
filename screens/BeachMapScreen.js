@@ -27,6 +27,7 @@ import { generateNFTAttributes } from "../utils/nftGenerator";
 import FlagIcon from "../components/FlagIcon";
 import ReportModal from '../components/ReportModal';
 import { LANGUAGE_LABELS } from "../constants/translations";
+import ENV from "../constants/env";
 const BLUE_GREY = "#607d8b";
 const BLUE_GREY_DARK = "#455a64";
 const BLUE_GREY_LIGHT = "#cfd8dc";
@@ -262,9 +263,7 @@ export default function BeachMapScreen({ navigation }) {
   const [beachesData, setBeachesData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const API_URL = Platform.OS === 'web' 
-    ? 'http://localhost:8000'
-    : 'http://192.168.1.100:8000';
+  const API_URL = ENV.API_BASE_URL;
 
   useEffect(() => {
     const fetchBeaches = async () => {

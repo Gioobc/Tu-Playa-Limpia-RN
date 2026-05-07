@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import { DeviceEventEmitter } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hashDrawing, verifyDrawing, hashExportPassword, obfuscateData, deobfuscateData, encryptData, decryptData } from '../utils/crypto';
+import ENV from '../constants/env';
 const AuthContext = createContext(null);
 const KEYS = {
     ACCOUNT: '@tpl_account_data',
@@ -91,7 +92,7 @@ export function AuthProvider({ children }) {
             const passwordHashed = await hashExportPassword(password);
             
             // ✅ Register user in backend API (MongoDB)
-            const apiUrl = process.env.API_BASE_URL || 'http://localhost:8000';
+            const apiUrl = ENV.API_BASE_URL;
             const registerResponse = await fetch(`${apiUrl}/api/users/register`, {
                 method: 'POST',
                 headers: {

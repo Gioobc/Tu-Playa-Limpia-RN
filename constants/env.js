@@ -2,10 +2,10 @@
 const ENV = {
   APP_NAME: process.env.APP_NAME || "Tu Playa Limpia",
   APP_VERSION: process.env.APP_VERSION || "1.0.1",
-  APP_URL: process.env.APP_URL || "https://tuplayalimpia.com",
+  APP_URL: process.env.EXPO_PUBLIC_APP_URL || process.env.APP_URL || "https://tuplayalimpia-tpl.vercel.app",
   ROBOFLOW_API_KEY: process.env.EXPO_PUBLIC_ROBOFLOW_API_KEY || "",
   ROBOFLOW_MODEL: process.env.EXPO_PUBLIC_ROBOFLOW_MODEL || "ocean-waste/2",
-  API_BASE_URL: process.env.API_BASE_URL || "",
+  API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || "http://localhost:8000",
 
   // zkTanenbaum Testnet Configuration
   BLOCKCHAIN_CHAIN_ID: 57057,

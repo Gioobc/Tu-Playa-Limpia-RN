@@ -9,7 +9,7 @@ import { rs, rf, rh, rw, SPACING, RADIUS } from '../constants/responsive';
 import ENV from '../constants/env';
 
 // Base URL for API - fallback to localhost if not set
-const API_URL = ENV.API_BASE_URL || 'http://localhost:8000';
+const API_URL = ENV.API_BASE_URL;
 
 
 export default function BeachReportsScreen({ route, navigation }) {
