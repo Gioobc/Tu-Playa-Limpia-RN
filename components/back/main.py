@@ -15,12 +15,21 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # Configurar CORS para permitir peticiones desde el frontend
+# Agregamos localhost y el dominio de Vercel específicamente para evitar errores de seguridad
+origins = [
+    "http://localhost:8081",
+    "http://localhost:8000",
+    "http://127.0.0.1:8081",
+    "http://127.0.0.1:8000",
+    "https://tuplayalimpia-tpl.vercel.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permite todos los orígenes (para desarrollo)
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Permite todos los métodos (GET, POST, etc.)
-    allow_headers=["*"],  # Permite todos los headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")
