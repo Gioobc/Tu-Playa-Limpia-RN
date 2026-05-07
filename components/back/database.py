@@ -150,6 +150,20 @@ class MongoDBConnection:
             logger.error(f"❌ Error actualizando usuario: {e}")
             raise
 
+    def get_all_users(self, limit: int = 50):
+        """Obtener todos los usuarios ordenados por scans totales"""
+        try:
+            collection = self.get_user_collection()
+            users = list(collection.find(
+                {"total_scans": {"$gt": 0}},
+                sort=[("total_scans", -1)],
+                limit=limit
+            ))
+            return users
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo usuarios: {e}")
+            return []
+
     def get_reports_by_beach(self, beach_name: str, limit: int = 50):
         """Obtener reportes de una playa específica"""
         try:

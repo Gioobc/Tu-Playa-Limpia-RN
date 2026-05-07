@@ -17,7 +17,7 @@ const GAME_KEYS = {
 export const GameProvider = ({ children }) => {
     const { mongoUserId, setUsername: setAuthUsername } = useAuth();
     const [points, setPoints] = useState(0);
-    const [scannedItems, setScannedItems] = useState({ bottles: 0, cans: 0, total: 0 });
+    const [scannedItems, setScannedItems] = useState({ bottles: 0, cans: 0, plastic: 0, total: 0 });
     const [nfts, setNfts] = useState([]);
     const [level, setLevel] = useState(1);
     const [activeBeach, setActiveBeach] = useState(null);
@@ -279,7 +279,16 @@ export const GameProvider = ({ children }) => {
         const value = customPoints !== null ? customPoints : (SCORING[type] || 0);
 
         setPoints(prev => prev + value);
-        setScannedItems(prev => ({ ...prev, [type]: (prev[type] || 0) + 1, total: prev.total + 1 }));
+        
+        // Update scanned items state
+        setScannedItems(prev => {
+            const updated = { 
+                ...prev, 
+                [type]: (prev[type] || 0) + 1, 
+                total: (prev.total || 0) + 1 
+            };
+            return updated;
+        });
 
         // Track in cleanup history if there's an active beach
         if (activeBeach) {
@@ -318,12 +327,15 @@ export const GameProvider = ({ children }) => {
         setActiveBeach(null);
     };
 
-    const syncTPLToBlockchain = async () => {
-        if (!user.walletAddress || points <= 0) return { success: false, error: 'No wallet or points to sync' };
+    const syncTPLToBlockchain = async (amount = null) => {
+        const mintAmount = amount !== null ? amount : points;
+        if (!user.walletAddress || mintAmount <= 0) return { success: false, error: 'No wallet or points to sync' };
 
         try {
-            console.log(`📡 Iniciando sincronización de ${points} TPL a la Blockchain...`);
-            const appUrl = process.env.EXPO_PUBLIC_APP_URL || 'https://tu-playa-limpia.vercel.app';
+            console.log(`📡 Iniciando sincronización de ${mintAmount} TPL a la Blockchain...`);
+            // Prioridad: Variable de entorno > Localhost (si estamos en dev) > Fallback Vercel
+            const appUrl = process.env.EXPO_PUBLIC_APP_URL || 
+                          (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://tu-playa-limpia.vercel.app');
 
             const response = await fetch(`${appUrl}/api/mint-tpl`, {
                 method: 'POST',
@@ -332,7 +344,7 @@ export const GameProvider = ({ children }) => {
                 },
                 body: JSON.stringify({
                     address: user.walletAddress,
-                    amount: points
+                    amount: mintAmount
                 }),
             });
 

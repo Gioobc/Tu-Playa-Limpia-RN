@@ -65,6 +65,7 @@ class UserBase(BaseModel):
     total_scans: Optional[int] = 0
     bottle_scans: Optional[int] = 0
     can_scans: Optional[int] = 0
+    plastic_scans: Optional[int] = 0
     has_changed_username: Optional[bool] = False
     has_awarded_profile_visit: Optional[bool] = False
 
@@ -157,7 +158,7 @@ async def update_user(user_id: str, updates: dict):
         # Campos permitidos para actualizar
         allowed_fields = {
             "avatar_url", "username", "tpl_title", "points", "level",
-            "total_scans", "bottle_scans", "can_scans", "has_changed_username",
+            "total_scans", "bottle_scans", "can_scans", "plastic_scans", "has_changed_username",
             "has_awarded_profile_visit", "initials"
         }
         
@@ -188,6 +189,30 @@ async def update_user(user_id: str, updates: dict):
     except Exception as e:
         logger.error(f"❌ Error actualizando usuario: {str(e)}")
         raise HTTPException(500, f"Error al actualizar usuario: {str(e)}")
+
+@app.get("/api/users")
+async def get_users(limit: int = 50):
+    """Obtener todos los usuarios con actividad de escaneo."""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        users = db_connection.get_all_users(limit)
+        
+        # Filtrar campos sensibles y convertir ObjectIds
+        for user in users:
+            user.pop("password_hash", None)
+            if "_id" in user:
+                user["_id"] = str(user["_id"])
+        
+        return {
+            "success": True,
+            "count": len(users),
+            "users": users
+        }
+    except Exception as e:
+        logger.error(f"❌ Error obteniendo usuarios: {str(e)}")
+        raise HTTPException(500, f"Error al obtener usuarios: {str(e)}")
 
 @app.post("/scan")
 async def scan(request: Request):

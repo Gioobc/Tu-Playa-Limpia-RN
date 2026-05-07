@@ -310,7 +310,6 @@ export default function HomeScreen() {
                 points={tplBalance !== null ? tplBalance : 0}
                 currentTitle={user.tplTitle}
                 onUpdateTitle={handleTitleUpdate}
-                onSync={syncTPLToBlockchain}
             />
         </View>
     );

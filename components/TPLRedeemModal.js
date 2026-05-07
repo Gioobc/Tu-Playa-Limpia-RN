@@ -60,24 +60,7 @@ const TPLRedeemModal = ({ visible, onClose, points, currentTitle, onUpdateTitle,
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncStatus, setSyncStatus] = useState(null); // 'success' | 'error' | null
 
-    const handleSync = async () => {
-        setIsSyncing(true);
-        setSyncStatus(null);
-        try {
-            const result = await onSync();
-            if (result.success) {
-                setSyncStatus('success');
-            } else {
-                setSyncStatus('error');
-            }
-        } catch (err) {
-            setSyncStatus('error');
-        } finally {
-            setIsSyncing(false);
-            // Limpiar status después de unos segundos
-            setTimeout(() => setSyncStatus(null), 3000);
-        }
-    };
+
     return (
         <Modal
             visible={visible}
@@ -105,31 +88,7 @@ const TPLRedeemModal = ({ visible, onClose, points, currentTitle, onUpdateTitle,
                                 <Text style={[styles.pointsValue, { color: colors.primary }]}>{points} TPL</Text>
                             </View>
 
-                            <TouchableOpacity
-                                style={[
-                                    styles.syncButton,
-                                    { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' },
-                                    syncStatus === 'success' && { backgroundColor: 'rgba(50, 205, 50, 0.2)' },
-                                    syncStatus === 'error' && { backgroundColor: 'rgba(255, 69, 0, 0.2)' }
-                                ]}
-                                onPress={handleSync}
-                                disabled={isSyncing || points === 0}
-                            >
-                                <Ionicons
-                                    name={isSyncing ? "sync" : (syncStatus === 'success' ? "checkmark-circle" : (syncStatus === 'error' ? "alert-circle" : "cloud-upload-outline"))}
-                                    size={rs(20)}
-                                    color={syncStatus === 'success' ? '#32CD32' : (syncStatus === 'error' ? '#FF4500' : colors.primary)}
-                                    style={isSyncing && { transform: [{ rotate: '0deg' }] }} // Rotación se manejaría con Animated si quisiéramos
-                                />
-                                <Text style={[
-                                    styles.syncButtonText,
-                                    { color: colors.text },
-                                    syncStatus === 'success' && { color: '#32CD32' },
-                                    syncStatus === 'error' && { color: '#FF4500' }
-                                ]}>
-                                    {isSyncing ? t('redeem_syncing') : (syncStatus === 'success' ? t('redeem_sync_success') : (syncStatus === 'error' ? t('redeem_sync_error') : t('redeem_sync_button')))}
-                                </Text>
-                            </TouchableOpacity>
+
                         </View>
                         <ScrollView
                             contentContainerStyle={styles.list}

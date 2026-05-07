@@ -40,9 +40,12 @@ export default async function handler(req, res) {
         const wallet = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
         const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, wallet);
 
-        console.log(`📡 Minting ${amount} TPL to ${address}...`);
+        console.log(`📡 Fetching decimals and minting ${amount} TPL to ${address}...`);
+        
+        const decimals = await contract.decimals();
+        const amountInWei = ethers.utils.parseUnits(amount.toString(), decimals);
 
-        const tx = await contract.mint(address, amount);
+        const tx = await contract.mint(address, amountInWei);
         const receipt = await tx.wait();
 
         console.log(`✅ Minting complete. Hash: ${receipt.transactionHash}`);

@@ -1,22 +1,77 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../context/ThemeContext';
-import { rs, rf, SPACING, RADIUS } from '../constants/responsive';
+import { rs, rf, rh, rw, SPACING, RADIUS } from '../constants/responsive';
+import ENV from '../constants/env';
 
-// --- Data (vacío hasta que se conecte el backend) ---
-const CLEANUP_HISTORY = [];
-const USER_REPORTS = [];
+// Base URL for API - fallback to localhost if not set
+const API_URL = ENV.API_BASE_URL || 'http://localhost:8000';
+
 
 export default function BeachReportsScreen({ route, navigation }) {
     const { beach } = route.params || {};
     const { colors, isDark } = useTheme();
+    const [cleanupHistory, setCleanupHistory] = useState([]);
+    const [userReports, setUserReports] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     const textColor = isDark ? colors.text : "#0B3B60"; // Deep blue from mockup
     const subTextColor = isDark ? colors.textMuted : "#64748B";
+
+    useEffect(() => {
+        fetchData();
+    }, [beach]);
+
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const beachName = beach?.name || 'Playa Miramar';
+            
+            // Fetch Users for Cleanup History (Top contributors)
+            // Note: Since we don't have beach-specific logs yet, we show global top contributors
+            const usersResp = await fetch(`${API_URL}/api/users?limit=10`);
+            const usersData = await usersResp.json();
+            
+            if (usersData.success) {
+                const history = usersData.users.map(u => ({
+                    id: u._id,
+                    title: u.username || 'Explorador TPL',
+                    date: u.updated_at ? new Date(u.updated_at).toLocaleDateString() : 'Reciente',
+                    participants: 1,
+                    residues: u.total_scans || 0,
+                    bottles: u.bottle_scans || 0,
+                    cans: u.can_scans || 0,
+                    plastics: u.plastic_scans || 0
+                }));
+                setCleanupHistory(history);
+            }
+
+            // Fetch Reports for this beach
+            const reportsResp = await fetch(`${API_URL}/api/reports/beach/${encodeURIComponent(beachName)}`);
+            const reportsData = await reportsResp.json();
+            
+            if (reportsData.success) {
+                const reports = reportsData.reports.map(r => ({
+                    id: r._id,
+                    title: r.report_type?.toUpperCase() || 'REPORTE',
+                    details: r.details || r.msg || 'Sin detalles',
+                    userName: r.user_name || 'Anónimo',
+                    image: r.image_uri ? { uri: r.image_uri } : null,
+                    status: r.status === 'pending' ? 'PENDIENTE' : 'VALIDADO',
+                    timeAgo: r.saved_at ? new Date(r.saved_at).toLocaleDateString() : 'Hace poco'
+                }));
+                setUserReports(reports);
+            }
+        } catch (error) {
+            console.error('Error fetching beach data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleBack = () => {
         if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -42,12 +97,16 @@ export default function BeachReportsScreen({ route, navigation }) {
                 
                 <View style={styles.timelineStatsRow}>
                     <View style={styles.timelineStat}>
-                        <Ionicons name="people" size={rs(16)} color={subTextColor} />
-                        <Text style={[styles.timelineStatText, { color: subTextColor }]}>{item.participants} participantes</Text>
+                        <Ionicons name="wine-outline" size={rs(16)} color={subTextColor} />
+                        <Text style={[styles.timelineStatText, { color: subTextColor }]}>{item.bottles} botellas</Text>
                     </View>
                     <View style={styles.timelineStat}>
-                        <Ionicons name="trash-outline" size={rs(16)} color={subTextColor} />
-                        <Text style={[styles.timelineStatText, { color: subTextColor }]}>{item.residues} residuos</Text>
+                        <Ionicons name="apps-outline" size={rs(16)} color={subTextColor} />
+                        <Text style={[styles.timelineStatText, { color: subTextColor }]}>{item.cans} latas</Text>
+                    </View>
+                    <View style={styles.timelineStat}>
+                        <Ionicons name="leaf-outline" size={rs(16)} color={subTextColor} />
+                        <Text style={[styles.timelineStatText, { color: subTextColor }]}>{item.plastics} plásticos</Text>
                     </View>
                 </View>
             </View>
@@ -56,22 +115,28 @@ export default function BeachReportsScreen({ route, navigation }) {
 
     const renderReportCard = (report) => (
         <View key={report.id} style={[styles.reportCard, { backgroundColor: isDark ? colors.card : '#fff' }]}>
-            <Image source={beach?.image || report.image} style={styles.reportImage} />
+            {report.image ? (
+                <Image source={report.image} style={styles.reportImage} />
+            ) : (
+                <View style={[styles.reportImagePlaceholder, { backgroundColor: isDark ? colors.background : '#F1F5F9' }]}>
+                    <Ionicons name="image-outline" size={rs(30)} color={subTextColor} />
+                </View>
+            )}
             
             <View style={styles.reportContent}>
                 <View style={styles.reportHeader}>
-                    <View style={styles.statusBadge}>
-                        <Text style={styles.statusText}>{report.status}</Text>
+                    <View style={[styles.statusBadge, report.status === 'VALIDADO' && { backgroundColor: '#D1FAE5' }]}>
+                        <Text style={[styles.statusText, report.status === 'VALIDADO' && { color: '#059669' }]}>{report.status}</Text>
                     </View>
                     <Text style={[styles.timeAgo, { color: subTextColor }]}>{report.timeAgo}</Text>
                 </View>
 
                 <Text style={[styles.reportTitle, { color: textColor }]} numberOfLines={1}>
-                    {report.title}
+                    {report.title} - {report.userName}
                 </Text>
                 
-                <Text style={[styles.reportDetails, { color: subTextColor }]} numberOfLines={1}>
-                    Estimado: {report.estimated} • {beach?.zone || report.zone}
+                <Text style={[styles.reportDetails, { color: subTextColor }]} numberOfLines={2}>
+                    {report.details}
                 </Text>
             </View>
         </View>
@@ -111,7 +176,11 @@ export default function BeachReportsScreen({ route, navigation }) {
                         <Ionicons name="time-outline" size={rs(20)} color={textColor} />
                     </View>
 
-                    {CLEANUP_HISTORY.length === 0 ? (
+                    {loading ? (
+                        <View style={styles.loadingSection}>
+                            <ActivityIndicator size="large" color={colors.primary} />
+                        </View>
+                    ) : cleanupHistory.length === 0 ? (
                         <View style={[styles.emptyState, { backgroundColor: isDark ? colors.card : '#fff' }]}>
                             <Ionicons name="calendar-outline" size={rs(36)} color={subTextColor} />
                             <Text style={[styles.emptyStateTitle, { color: textColor }]}>Sin historial registrado</Text>
@@ -119,7 +188,7 @@ export default function BeachReportsScreen({ route, navigation }) {
                         </View>
                     ) : (
                         <View style={styles.timelineContainer}>
-                            {CLEANUP_HISTORY.map((item, index) => renderTimelineNode(item, index === CLEANUP_HISTORY.length - 1))}
+                            {cleanupHistory.map((item, index) => renderTimelineNode(item, index === cleanupHistory.length - 1))}
                         </View>
                     )}
                 </View>
@@ -133,7 +202,11 @@ export default function BeachReportsScreen({ route, navigation }) {
                         </View>
                     </View>
 
-                    {USER_REPORTS.length === 0 ? (
+                    {loading ? (
+                        <View style={styles.loadingSection}>
+                            <ActivityIndicator size="large" color={colors.primary} />
+                        </View>
+                    ) : userReports.length === 0 ? (
                         <View style={[styles.emptyState, { backgroundColor: isDark ? colors.card : '#fff' }]}>
                             <Ionicons name="document-outline" size={rs(36)} color={subTextColor} />
                             <Text style={[styles.emptyStateTitle, { color: textColor }]}>Sin reportes registrados</Text>
@@ -141,7 +214,7 @@ export default function BeachReportsScreen({ route, navigation }) {
                         </View>
                     ) : (
                         <View style={styles.reportsContainer}>
-                            {USER_REPORTS.map(renderReportCard)}
+                            {userReports.map(renderReportCard)}
                         </View>
                     )}
                 </View>
@@ -342,6 +415,18 @@ const styles = StyleSheet.create({
         height: rs(80),
         borderRadius: RADIUS.lg,
         marginRight: SPACING.md,
+    },
+    reportImagePlaceholder: {
+        width: rs(80),
+        height: rs(80),
+        borderRadius: RADIUS.lg,
+        marginRight: SPACING.md,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingSection: {
+        paddingVertical: SPACING.xl,
+        alignItems: 'center',
     },
     reportContent: {
         flex: 1,

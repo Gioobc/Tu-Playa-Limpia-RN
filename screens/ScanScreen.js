@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, ActivityIndicator, useWindowDimensions, Alert, TouchableOpacity, Platform } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +23,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useWallet } from '../context/WalletContext';
+import { useAuth } from '../context/AuthContext';
 import { BRAND } from '../constants/theme';
 import { rs, rf, rh, rw, SPACING, RADIUS, SCREEN } from '../constants/responsive';
 import { SPRING } from '../constants/animations';
@@ -222,7 +224,7 @@ const CLASS_MAPPING = {
     'plastic-bottle': { type: 'bottle', labelKey: 'scan_label_plastic_bottle', points: 5, color: '#22c55e' },
     'bottle': { type: 'bottle', labelKey: 'scan_label_bottle', points: 5, color: '#22c55e' },
     'can': { type: 'can', labelKey: 'scan_label_can', points: 3, color: '#eab308' },
-    'plastic': { type: 'trash', labelKey: 'scan_label_plastic', points: 1, color: '#3b82f6' },
+    'plastic': { type: 'plastic', labelKey: 'scan_label_plastic', points: 1, color: '#3b82f6' },
     'trash': { type: 'trash', labelKey: 'scan_label_trash', points: 1, color: '#ef4444' },
     'paper': { type: 'trash', labelKey: 'scan_label_paper', points: 1, color: '#a855f7' },
     'cardboard': { type: 'trash', labelKey: 'scan_label_cardboard', points: 1, color: '#f97316' },
@@ -381,7 +383,9 @@ const LastScanInfoPanel = ({ scanInfo, isDark, onDismiss }) => {
     );
 };
 export default function ScanScreen() {
-    const { scanItem, activeBeach, endCleanup } = useGame();
+    const { scanItem, activeBeach, endCleanup, syncTPLToBlockchain, scannedItems, points, updateUserProfile, user } = useGame();
+    const { mongoUserId } = useAuth(); // Import useAuth to check mongoUserId
+    const { address: walletAddress } = useWallet();
     const { colors, isDark } = useTheme();
     const { t } = useLanguage();
     const navigation = useNavigation();
@@ -411,6 +415,8 @@ export default function ScanScreen() {
     const [lastScanInfo, setLastScanInfo] = useState(null);
     const [showCelebration, setShowCelebration] = useState(false);
     const [celebrationMessage, setCelebrationMessage] = useState('');
+    const [showAdminNotice, setShowAdminNotice] = useState(false);
+    const [pendingReclaim, setPendingReclaim] = useState(null);
     const scannerSize = getScannerSize();
     const waterGradient = isDark
         ? [BRAND.oceanDeep, '#002844', BRAND.oceanMid]
@@ -577,13 +583,72 @@ export default function ScanScreen() {
         }
     };
     const handleCollect = () => {
-        if (!isReadyToCollect || !detectionResults || detectionResults.totalPoints <= 0) return;
-        const mainType = detectionResults.items[0]?.label || 'Residuo';
-        const { unlockedNFT } = scanItem('trash', detectionResults.totalPoints);
-        if (unlockedNFT) {
-            setCelebrationMessage(`${t('celebration_thanks')}\n\n${t('celebration_nft_unlocked')}\n${unlockedNFT.title}\n\n${t('celebration_see_rewards')}`);
-            setShowCelebration(true);
+        console.log("[ScanScreen] handleCollect triggered");
+        if (!isReadyToCollect || !detectionResults || detectionResults.totalPoints <= 0) {
+            console.log("[ScanScreen] Not ready or no points", { isReadyToCollect, hasResults: !!detectionResults });
+            return;
         }
+        
+        const currentAddress = walletAddress || user.walletAddress;
+        console.log("[ScanScreen] Checking address:", currentAddress);
+        
+        const isAdmin = currentAddress?.toLowerCase() === '0x12539926a3e4331b411b9d1bfc66fdded008b72e';
+        const mainType = detectionResults.items[0]?.label || 'Residuo';
+
+        if (isAdmin) {
+            console.log("[ScanScreen] Admin detected, showing custom notice");
+            setPendingReclaim({ type: mainType, points: detectionResults.totalPoints });
+            setShowAdminNotice(true);
+        } else {
+            processReclaim(mainType, detectionResults.totalPoints);
+        }
+    };
+
+    const handleAdminNoticeConfirm = () => {
+        setShowAdminNotice(false);
+        if (pendingReclaim) {
+            processReclaim(pendingReclaim.type, pendingReclaim.points);
+            setPendingReclaim(null);
+        }
+    };
+
+    const processReclaim = (mainType, rewardPoints) => {
+        console.log(`[ScanScreen] Reclaiming ${rewardPoints} points for ${mainType}`);
+        const { unlockedNFT } = scanItem(mainType.toLowerCase().includes('plastic') ? 'plastic' : 'trash', rewardPoints);
+        
+        // Sync to blockchain only if NOT admin
+        const currentAddress = walletAddress || user.walletAddress;
+        const isAdmin = currentAddress?.toLowerCase() === '0x12539926a3e4331b411b9d1bfc66fdded008b72e';
+        if (!isAdmin) {
+            syncTPLToBlockchain(rewardPoints);
+        }
+
+        // Persist to MongoDB
+        const updateData = {
+            total_scans: (scannedItems.total || 0) + 1,
+            bottle_scans: scannedItems.bottles + (mainType.toLowerCase().includes('bottle') ? 1 : 0),
+            can_scans: scannedItems.cans + (mainType.toLowerCase().includes('can') ? 1 : 0),
+            plastic_scans: (scannedItems.plastic || 0) + (mainType.toLowerCase().includes('plastic') ? 1 : 0),
+            points: (points || 0) + rewardPoints
+        };
+        
+        console.log(`[ScanScreen] Syncing to MongoDB (ID: ${mongoUserId}):`, updateData);
+        if (!mongoUserId) {
+            console.warn("[ScanScreen] No mongoUserId found, sync might fail");
+        }
+        updateUserProfile(updateData);
+        
+        // Skip celebration for admin, show only for normal users
+        if (!isAdmin) {
+            if (unlockedNFT) {
+                setCelebrationMessage(`${t('celebration_thanks')}\n\n${t('celebration_nft_unlocked')}\n${unlockedNFT.title}\n\n${t('celebration_see_rewards')}`);
+                setShowCelebration(true);
+            } else {
+                setCelebrationMessage(`${t('celebration_thanks')}\n\n+${rewardPoints} TPL ${t('celebration_earned')}`);
+                setShowCelebration(true);
+            }
+        }
+
         setLastScanInfo({
             timestamp: new Date().toLocaleTimeString(),
             items: detectionResults.items.map(item => ({
@@ -597,18 +662,21 @@ export default function ScanScreen() {
             totalPoints: detectionResults.totalPoints,
             totalItems: detectionResults.count,
         });
+
         setLastScanned({
             type: mainType,
             points: detectionResults.totalPoints,
             details: detectionResults.items,
         });
+
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setIsReadyToCollect(false);
+        
         setTimeout(() => {
             setLastScanned(null);
             setDetectionResults(null);
             setPredictions([]);
-        }, 2500);
+        }, 5000);
     };
     const toggleAutoScan = () => {
         setIsAutoScanning(!isAutoScanning);
@@ -939,6 +1007,54 @@ export default function ScanScreen() {
                     </View>
                 </LinearGradient>
             </SafeAreaView>
+
+            {/* Admin Notice Overlay */}
+            {showAdminNotice && (
+                <View style={[StyleSheet.absoluteFill, styles.noticeOverlay]}>
+                    <Animated.View 
+                        entering={FadeInDown}
+                        style={[styles.noticeCard, { backgroundColor: isDark ? '#1a202c' : '#fff' }]}
+                    >
+                        <View style={styles.noticeIconContainer}>
+                            <Ionicons name="alert-circle" size={rs(50)} color="#eab308" />
+                        </View>
+                        <Text style={[styles.noticeTitle, { color: colors.text }]}>¡Hey! 😅</Text>
+                        <Text style={[styles.noticeDesc, { color: colors.textSecondary }]}>
+                            ¡Son tus propios tokens! Estás intentando reclamar tokens que tú mismo emites.
+                        </Text>
+                        <TouchableOpacity 
+                            style={styles.noticeButton}
+                            onPress={handleAdminNoticeConfirm}
+                        >
+                            <Text style={styles.noticeButtonText}>Continuar y Guardar</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+                </View>
+            )}
+
+            {/* Celebration Overlay */}
+            {showCelebration && (
+                <View style={[StyleSheet.absoluteFill, styles.noticeOverlay]}>
+                    <Animated.View 
+                        entering={FadeInDown}
+                        style={[styles.noticeCard, { backgroundColor: isDark ? '#1a202c' : '#fff' }]}
+                    >
+                        <View style={styles.noticeIconContainer}>
+                            <Ionicons name="star" size={rs(50)} color="#eab308" />
+                        </View>
+                        <Text style={[styles.noticeTitle, { color: colors.text }]}>¡Felicidades!</Text>
+                        <Text style={[styles.noticeDesc, { color: colors.textSecondary }]}>
+                            {celebrationMessage}
+                        </Text>
+                        <TouchableOpacity 
+                            style={styles.noticeButton}
+                            onPress={() => setShowCelebration(false)}
+                        >
+                            <Text style={styles.noticeButtonText}>Aceptar</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+                </View>
+            )}
         </View>
     );
 }
@@ -1355,5 +1471,55 @@ const styles = StyleSheet.create({
     activeBeachText: {
         fontSize: rf(14),
         fontWeight: '600',
-    }
+    },
+    noticeOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: SPACING.xl,
+        zIndex: 9999,
+    },
+    noticeCard: {
+        width: '90%',
+        padding: SPACING.xl,
+        borderRadius: RADIUS.xl,
+        alignItems: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 10,
+    },
+    noticeIconContainer: {
+        marginBottom: SPACING.md,
+    },
+    noticeTitle: {
+        fontSize: rf(24),
+        fontWeight: '900',
+        marginBottom: SPACING.sm,
+    },
+    noticeDesc: {
+        fontSize: rf(16),
+        textAlign: 'center',
+        lineHeight: rf(22),
+        marginBottom: SPACING.xl,
+    },
+    noticeButton: {
+        backgroundColor: '#3b82f6',
+        paddingVertical: rs(12),
+        paddingHorizontal: rs(30),
+        borderRadius: RADIUS.lg,
+        width: '100%',
+        alignItems: 'center',
+    },
+    noticeButtonText: {
+        color: '#fff',
+        fontSize: rf(16),
+        fontWeight: '800',
+    },
 });
