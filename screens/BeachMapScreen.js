@@ -332,9 +332,10 @@ export default function BeachMapScreen({ navigation }) {
       selectedZone === "map_all_zones" ||
       zoneMapping[beach.zone] === selectedZone;
     if (!search && selectedZone === "map_all_zones") {
-      const preferredCountry = LANGUAGE_LABELS[language]?.code;
-      if (preferredCountry) {
-        matchesZone = beach.country === preferredCountry;
+      const preferredCountry = LANGUAGE_LABELS[language]?.code?.toLowerCase();
+      const beachCountry = beach.country?.toLowerCase();
+      if (preferredCountry && beachCountry) {
+        matchesZone = beachCountry === preferredCountry;
       }
     }
     

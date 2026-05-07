@@ -14,19 +14,12 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Configurar CORS para permitir peticiones desde el frontend
-# Agregamos localhost y el dominio de Vercel específicamente para evitar errores de seguridad
-origins = [
-    "http://localhost:8081",
-    "http://localhost:8000",
-    "http://127.0.0.1:8081",
-    "http://127.0.0.1:8000",
-    "https://tuplayalimpia-tpl.vercel.app",
-]
-
+# Configurar CORS con mayor flexibilidad para Vercel
+# Nota: allow_origins=["*"] no funciona con allow_credentials=True
+# Por lo tanto, usamos una lista más amplia o permitimos dinámicamente
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app|https://tuplayalimpia-tpl\.vercel\.app|http://localhost:.*|http://127\.0\.0\.1:.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -95,6 +88,14 @@ def verify_password(password: str, password_hash: str) -> bool:
         return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
     except Exception:
         return False
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Tu Playa Limpia API is running",
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
 
 @app.get("/health")
 async def health():
