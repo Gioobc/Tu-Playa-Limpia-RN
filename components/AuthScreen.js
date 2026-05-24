@@ -47,6 +47,7 @@ export default function AuthScreen({ onAuthenticated }) {
     const [statusText, setStatusText] = useState('');
     const [errorText, setErrorText] = useState('');
     const [regUsername, setRegUsername] = useState('');
+    const [regEmail, setRegEmail] = useState('');
     const [regPassword, setRegPassword] = useState('');
     const [regPasswordConfirm, setRegPasswordConfirm] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -156,10 +157,11 @@ export default function AuthScreen({ onAuthenticated }) {
             if (compareFingerprints(fp1, fp2)) {
                 hapticSuccess();
                 setStatusText(t('auth_creating_account'));
-                const result = await onRegister(regUsername, regPassword, strokes);
+                const result = await onRegister(regUsername, regEmail, regPassword, strokes);
                 if (result.success) {
                     updateUserProfile({
                         name: regUsername,
+                        email: regEmail,
                         initials: regUsername.substring(0, 2).toUpperCase(),
                         hasChangedUsername: false,
                     });
@@ -249,6 +251,18 @@ export default function AuthScreen({ onAuthenticated }) {
         setMode('register_password');
     };
     const handleRegisterPasswordNext = () => {
+        const trimmedEmail = regEmail.trim();
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!trimmedEmail) {
+            setErrorText(t('auth_email_required') || 'El correo electrónico es requerido');
+            triggerShake();
+            return;
+        }
+        if (!emailRegex.test(trimmedEmail)) {
+            setErrorText(t('auth_email_invalid') || 'Ingresa un correo electrónico válido');
+            triggerShake();
+            return;
+        }
         if (regPassword.length < 6) {
             setErrorText(t('auth_password_short'));
             triggerShake();
@@ -477,6 +491,23 @@ export default function AuthScreen({ onAuthenticated }) {
                             <View style={styles.formIconRow}>
                                 <Ionicons name="lock-closed-outline" size={rs(24)} color={colors.accent} />
                             </View>
+                            <TextInput
+                                style={[
+                                    styles.input,
+                                    { color: colors.text, borderColor: colors.border, backgroundColor: colors.glass },
+                                    errorText === t('auth_email_invalid') || errorText === t('auth_email_required') ? styles.inputError : null
+                                ]}
+                                placeholder={t('auth_email_placeholder')}
+                                placeholderTextColor={colors.textMuted}
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                                value={regEmail}
+                                onChangeText={(val) => {
+                                    setRegEmail(val);
+                                    if (errorText) setErrorText('');
+                                }}
+                                autoFocus
+                            />
                             <View style={styles.passwordContainer}>
                                 <TextInput
                                     style={[
@@ -493,7 +524,6 @@ export default function AuthScreen({ onAuthenticated }) {
                                         setRegPassword(val);
                                         if (errorText) setErrorText('');
                                     }}
-                                    autoFocus
                                 />
                                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
                                     <Ionicons name={showPassword ? "eye-outline" : "eye-off-outline"} size={20} color={colors.accent} />

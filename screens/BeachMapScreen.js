@@ -71,6 +71,17 @@ const BEACH_IMAGES = {
   36: require("./Beach/data/PE-LIM-PLAYACABALLEROS.webp"),
   37: require("./Beach/data/PE-LIM-PLAYAHERMOSA.webp"),
   38: require("./Beach/data/PE-LIM-AGUADULCE.webp"),
+  // Nuevas playas peruanas y duplicado
+  83: require("./Beach/data/PE-LIM-PLAYASENORITAS.webp"), // Punta Negra
+  84: require("./Beach/data/PE-LIM-ELSILENCIO.webp"), // San Bartolo
+  85: require("./Beach/data/PE-LIM-PLAYACABALLEROS.webp"), // Santa María
+  86: require("./Beach/data/PE-LIM-PLAYAHERMOSA.webp"), // Naplo
+  87: require("./Beach/data/PE-LIM-PESCADORES.webp"), // Pucusana
+  88: require("./Beach/data/PE-LIM-AGUADULCE.webp"), // Asia
+  89: require("./Beach/data/PE-LIM-ARICA.webp"), // Cerro Azul
+  90: require("./Beach/data/PE-LIM-LAHERRADURA.webp"), // Puerto Viejo
+  91: require("./Beach/data/PE-LIM-WAIKIKI.webp"), // Tuquillo
+  92: require("./Beach/data/PE-LIM-LOSPULPUS.webp") // Los Pulpos (Sur Chico)
 };
 const LIMA_CENTER = { lat: -12.12, lng: -77.03 };
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -191,7 +202,7 @@ const BeachCard = ({ beach, isDark, onPress, onReportPress, t }) => {
             <View style={{ flexDirection: 'row', gap: rs(8) }}>
               <TouchableOpacity
                 onPress={() => {
-                  const url = `https://www.google.com/maps/search/?api=1&query=${beach.lat},${beach.lng}`;
+                  const url = beach.mapUrl || `https://www.google.com/maps/search/?api=1&query=${beach.lat},${beach.lng}`;
                   if (Platform.OS !== "web")
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   Linking.openURL(url);
@@ -207,7 +218,7 @@ const BeachCard = ({ beach, isDark, onPress, onReportPress, t }) => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   }
                   // Action for report
-                  if(onReportPress) onReportPress(beach);
+                  if (onReportPress) onReportPress(beach);
                 }}
                 style={[styles.mapIconBtn, { backgroundColor: "#10b981" }]}
               >
@@ -252,14 +263,14 @@ export default function BeachMapScreen({ navigation }) {
   const [selectedCleanliness, setSelectedCleanliness] = useState('all');
   const [showCelebration, setShowCelebration] = useState(false);
   const [selectedBeachForReport, setSelectedBeachForReport] = useState(null);
-  
+
   useEffect(() => {
     if (language && LANGUAGE_TO_ZONE[language]) {
       setSelectedZone(LANGUAGE_TO_ZONE[language]);
     }
   }, [language]);
   const [lastUnlockedNFT, setLastUnlockedNFT] = useState(null);
-  
+
   const [beachesData, setBeachesData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -270,7 +281,7 @@ export default function BeachMapScreen({ navigation }) {
       try {
         const response = await fetch(`${API_URL}/api/beaches`);
         const result = await response.json();
-        
+
         if (result.success && result.beaches) {
           const mappedBeaches = result.beaches.map(b => {
             return {
@@ -283,9 +294,13 @@ export default function BeachMapScreen({ navigation }) {
               clean: b.is_clean,
               people: b.people_cleaning,
               country: b.country_code,
+              orderIndex: b.orderIndex || 999,
+              mapUrl: b.mapUrl,
               image: BEACH_IMAGES[b.id] || require("./Beach/data/PE-LIM-MIRAMAR.webp")
             };
           });
+          // Ordenar por orderIndex para respetar el orden manual
+          mappedBeaches.sort((a, b) => a.orderIndex - b.orderIndex);
           setBeachesData(mappedBeaches);
         } else {
           console.error("Error en respuesta del backend de Python:", result);
@@ -298,7 +313,7 @@ export default function BeachMapScreen({ navigation }) {
         setIsLoading(false);
       }
     };
-    
+
     fetchBeaches();
   }, []);
 
@@ -338,7 +353,7 @@ export default function BeachMapScreen({ navigation }) {
         matchesZone = beachCountry === preferredCountry;
       }
     }
-    
+
     // Cleanliness filtering
     let matchesCleanliness = true;
     if (selectedCleanliness === 'limpio') {
@@ -554,101 +569,101 @@ export default function BeachMapScreen({ navigation }) {
             </TouchableOpacity>
 
             {isDropdownVisible && (
-                <View 
-                  style={[
-                    styles.githubModal, 
-                    { 
-                      position: 'absolute',
-                      top: rs(40),
-                      left: SPACING.md,
-                      zIndex: 1000,
-                      backgroundColor: isDark ? 'rgba(13, 58, 77, 0.98)' : '#ffffff', 
-                      borderColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' 
-                    }
-                  ]}
-                >
-                  {/* Header */}
-                  <View style={[styles.githubModalHeader, { borderBottomColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' }]}>
-                    <Text style={[styles.githubModalTitle, { color: textColor }]}>
-                      Cambiar zona/suciedad
-                    </Text>
-                    <TouchableOpacity onPress={() => setDropdownVisible(false)} style={{ padding: rs(4) }}>
-                      <Ionicons name="close" size={rs(20)} color={subTextColor} />
-                    </TouchableOpacity>
-                  </View>
+              <View
+                style={[
+                  styles.githubModal,
+                  {
+                    position: 'absolute',
+                    top: rs(40),
+                    left: SPACING.md,
+                    zIndex: 1000,
+                    backgroundColor: isDark ? 'rgba(13, 58, 77, 0.98)' : '#ffffff',
+                    borderColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)'
+                  }
+                ]}
+              >
+                {/* Header */}
+                <View style={[styles.githubModalHeader, { borderBottomColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' }]}>
+                  <Text style={[styles.githubModalTitle, { color: textColor }]}>
+                    Cambiar zona/suciedad
+                  </Text>
+                  <TouchableOpacity onPress={() => setDropdownVisible(false)} style={{ padding: rs(4) }}>
+                    <Ionicons name="close" size={rs(20)} color={subTextColor} />
+                  </TouchableOpacity>
+                </View>
 
-                  {/* Search Input */}
-                  <View style={styles.githubSearchContainer}>
-                    <View style={[styles.githubSearchBox, { backgroundColor: isDark ? 'rgba(0, 0, 0, 0.2)' : '#f1f5f9', borderColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' }]}>
-                      <Ionicons name="search" size={rs(16)} color={subTextColor} />
-                      <TextInput
-                        style={[styles.githubSearchInput, { color: textColor }]}
-                        placeholder={`Buscar ${activeTab}...`}
-                        placeholderTextColor={subTextColor}
-                        value={dropdownSearch}
-                        onChangeText={setDropdownSearch}
-                      />
-                    </View>
-                  </View>
-
-                  {/* Tabs */}
-                  <View style={[styles.githubTabs, { borderBottomColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' }]}>
-                    <TouchableOpacity 
-                      style={[styles.githubTab, activeTab === 'zona' && { borderBottomColor: '#0ea5e9' }]} 
-                      onPress={() => { setActiveTab('zona'); setDropdownSearch(''); }}
-                    >
-                      <Text style={[styles.githubTabText, { color: activeTab === 'zona' ? textColor : subTextColor, fontWeight: activeTab === 'zona' ? '600' : '400' }]}>
-                        Zona
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[styles.githubTab, activeTab === 'suciedad' && { borderBottomColor: '#0ea5e9' }]} 
-                      onPress={() => { setActiveTab('suciedad'); setDropdownSearch(''); }}
-                    >
-                      <Text style={[styles.githubTabText, { color: activeTab === 'suciedad' ? textColor : subTextColor, fontWeight: activeTab === 'suciedad' ? '600' : '400' }]}>
-                        Suciedad
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* List */}
-                  <View style={{ maxHeight: rs(250) }}>
-                    <FlatList
-                      data={
-                        activeTab === 'zona' 
-                        ? zones.filter(z => t(z).toLowerCase().includes(dropdownSearch.toLowerCase())).map(z => ({ id: z, label: t(z) }))
-                        : [
-                            { id: 'all', label: 'Todas' },
-                            { id: 'limpio', label: 'Limpio' },
-                            { id: 'sucio', label: 'Sucio' },
-                            { id: 'muy_sucio', label: 'Muy sucio' }
-                          ].filter(s => s.label.toLowerCase().includes(dropdownSearch.toLowerCase()))
-                      }
-                      keyExtractor={(item) => item.id}
-                      renderItem={({item}) => {
-                        const isSelected = activeTab === 'zona' ? selectedZone === item.id : selectedCleanliness === item.id;
-                        return (
-                          <TouchableOpacity 
-                            style={[styles.githubListItem, { borderBottomColor: isDark ? 'rgba(96, 125, 139, 0.15)' : 'rgba(226, 232, 240, 0.5)' }]}
-                            onPress={() => {
-                              if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              if (activeTab === 'zona') setSelectedZone(item.id);
-                              else setSelectedCleanliness(item.id);
-                              setDropdownVisible(false);
-                            }}
-                          >
-                            <View style={{ width: rs(24), alignItems: 'center' }}>
-                              {isSelected && <Ionicons name="checkmark" size={rs(16)} color={textColor} />}
-                            </View>
-                            <Text style={[styles.githubListItemText, { color: textColor, fontWeight: isSelected ? '600' : '400' }]}>
-                              {item.label}
-                            </Text>
-                          </TouchableOpacity>
-                        )
-                      }}
+                {/* Search Input */}
+                <View style={styles.githubSearchContainer}>
+                  <View style={[styles.githubSearchBox, { backgroundColor: isDark ? 'rgba(0, 0, 0, 0.2)' : '#f1f5f9', borderColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' }]}>
+                    <Ionicons name="search" size={rs(16)} color={subTextColor} />
+                    <TextInput
+                      style={[styles.githubSearchInput, { color: textColor }]}
+                      placeholder={`Buscar ${activeTab}...`}
+                      placeholderTextColor={subTextColor}
+                      value={dropdownSearch}
+                      onChangeText={setDropdownSearch}
                     />
                   </View>
                 </View>
+
+                {/* Tabs */}
+                <View style={[styles.githubTabs, { borderBottomColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' }]}>
+                  <TouchableOpacity
+                    style={[styles.githubTab, activeTab === 'zona' && { borderBottomColor: '#0ea5e9' }]}
+                    onPress={() => { setActiveTab('zona'); setDropdownSearch(''); }}
+                  >
+                    <Text style={[styles.githubTabText, { color: activeTab === 'zona' ? textColor : subTextColor, fontWeight: activeTab === 'zona' ? '600' : '400' }]}>
+                      Zona
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.githubTab, activeTab === 'suciedad' && { borderBottomColor: '#0ea5e9' }]}
+                    onPress={() => { setActiveTab('suciedad'); setDropdownSearch(''); }}
+                  >
+                    <Text style={[styles.githubTabText, { color: activeTab === 'suciedad' ? textColor : subTextColor, fontWeight: activeTab === 'suciedad' ? '600' : '400' }]}>
+                      Suciedad
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* List */}
+                <View style={{ maxHeight: rs(250) }}>
+                  <FlatList
+                    data={
+                      activeTab === 'zona'
+                        ? zones.filter(z => t(z).toLowerCase().includes(dropdownSearch.toLowerCase())).map(z => ({ id: z, label: t(z) }))
+                        : [
+                          { id: 'all', label: 'Todas' },
+                          { id: 'limpio', label: 'Limpio' },
+                          { id: 'sucio', label: 'Sucio' },
+                          { id: 'muy_sucio', label: 'Muy sucio' }
+                        ].filter(s => s.label.toLowerCase().includes(dropdownSearch.toLowerCase()))
+                    }
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => {
+                      const isSelected = activeTab === 'zona' ? selectedZone === item.id : selectedCleanliness === item.id;
+                      return (
+                        <TouchableOpacity
+                          style={[styles.githubListItem, { borderBottomColor: isDark ? 'rgba(96, 125, 139, 0.15)' : 'rgba(226, 232, 240, 0.5)' }]}
+                          onPress={() => {
+                            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            if (activeTab === 'zona') setSelectedZone(item.id);
+                            else setSelectedCleanliness(item.id);
+                            setDropdownVisible(false);
+                          }}
+                        >
+                          <View style={{ width: rs(24), alignItems: 'center' }}>
+                            {isSelected && <Ionicons name="checkmark" size={rs(16)} color={textColor} />}
+                          </View>
+                          <Text style={[styles.githubListItemText, { color: textColor, fontWeight: isSelected ? '600' : '400' }]}>
+                            {item.label}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    }}
+                  />
+                </View>
+              </View>
             )}
           </View>
         </SafeAreaView>
@@ -664,12 +679,12 @@ export default function BeachMapScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
           <View style={{ width: cardWidth }}>
-            <BeachCard 
-              beach={item} 
-              isDark={isDark} 
-              onPress={handleBeachPress} 
+            <BeachCard
+              beach={item}
+              isDark={isDark}
+              onPress={handleBeachPress}
               onReportPress={(b) => setSelectedBeachForReport(b)}
-              t={t} 
+              t={t}
             />
           </View>
         )}
@@ -689,10 +704,10 @@ export default function BeachMapScreen({ navigation }) {
           </View>
         }
       />
-      <ReportModal 
-        visible={!!selectedBeachForReport} 
-        beach={selectedBeachForReport} 
-        onClose={() => setSelectedBeachForReport(null)} 
+      <ReportModal
+        visible={!!selectedBeachForReport}
+        beach={selectedBeachForReport}
+        onClose={() => setSelectedBeachForReport(null)}
       />
     </View>
   );

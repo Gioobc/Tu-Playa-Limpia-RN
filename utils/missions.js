@@ -89,7 +89,8 @@ export const BEAC_MISSIONS = [
     { id: 88, name: "Asia" },
     { id: 89, name: "Cerro Azul" },
     { id: 90, name: "Puerto Viejo" },
-    { id: 91, name: "Tuquillo" }
+    { id: 91, name: "Tuquillo" },
+    { id: 92, name: "Los Pulpos" }
 ];
 
 export const getMissionName = (id) => {

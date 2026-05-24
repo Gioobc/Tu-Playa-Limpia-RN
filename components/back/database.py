@@ -140,6 +140,26 @@ class MongoDBConnection:
             logger.error(f"❌ Error buscando usuario por id: {e}")
             return None
 
+    def find_user_by_email(self, email: str):
+        """Buscar usuario por correo electrónico"""
+        try:
+            collection = self.get_user_collection()
+            return collection.find_one({"email": email})
+        except Exception as e:
+            logger.error(f"❌ Error buscando usuario por email: {e}")
+            return None
+
+    def delete_user_by_email(self, email: str) -> bool:
+        """Eliminar usuario por correo electrónico"""
+        try:
+            collection = self.get_user_collection()
+            result = collection.delete_one({"email": email})
+            logger.info(f"🗑️ Usuario con email {email} eliminado: {result.deleted_count} documentos")
+            return result.deleted_count > 0
+        except Exception as e:
+            logger.error(f"❌ Error eliminando usuario por email: {e}")
+            raise
+
     def update_user(self, user_id: str, update_data: dict):
         """Actualizar campos de usuario"""
         try:
@@ -198,6 +218,8 @@ class MongoDBConnection:
             db_beaches = self._client[BEACHES_DB_NAME]
             collection = db_beaches[BEACHES_COLLECTION]
             beaches = list(collection.find({}))
+            # Ordenar por orderIndex para asegurar consistencia
+            beaches.sort(key=lambda x: x.get("orderIndex", 999))
             return beaches
         except Exception as e:
             logger.error(f"❌ Error obteniendo playas: {e}")

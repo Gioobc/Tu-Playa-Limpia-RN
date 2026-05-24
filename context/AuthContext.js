@@ -44,6 +44,67 @@ export function AuthProvider({ children }) {
     const [accountId, setAccountId] = useState(null);
     const [mongoUserId, setMongoUserId] = useState(null);
     const [username, setUsername] = useState('');
+
+    const clearLocalAccount = useCallback(async () => {
+        try {
+            console.log('🧹 Wiping all local TPL account and game data...');
+            await AsyncStorage.multiRemove([
+                KEYS.ACCOUNT,
+                KEYS.SESSION,
+                KEYS.DRAWING_HASH,
+                KEYS.PASSWORD_HASH,
+                KEYS.PROFILE,
+                KEYS.USERNAME,
+                KEYS.REGISTRATION_DATE,
+                '@tpl_game_points',
+                '@tpl_game_items',
+                '@tpl_game_nfts',
+                '@tpl_game_user_meta',
+                '@tpl_game_cleanup_history'
+            ]);
+            setIsAuthenticated(false);
+            setIsFirstTime(true);
+            setAccountId(null);
+            setMongoUserId(null);
+            setUsername('');
+            
+            // Emit global event to notify GameContext and other components
+            DeviceEventEmitter.emit('TPL_ACCOUNT_IMPORTED');
+        } catch (e) {
+            console.warn('Wipe local account error:', e);
+        }
+    }, []);
+
+    // Background session/account existence check
+    useEffect(() => {
+        if (!mongoUserId) return;
+        
+        let intervalId;
+        const checkAccountStatus = async () => {
+            try {
+                const apiUrl = ENV.API_BASE_URL;
+                const response = await fetch(`${apiUrl}/api/users/status/${mongoUserId}`);
+                if (response.status === 404) {
+                    console.log('⚠️ User account deleted on server. Logging out and resetting app...');
+                    await clearLocalAccount();
+                }
+            } catch (err) {
+                // Silently ignore temporary network errors
+                console.warn('Failed to verify user account status on server:', err.message);
+            }
+        };
+
+        // Run check initially
+        checkAccountStatus();
+
+        // Check every 7 seconds
+        intervalId = setInterval(checkAccountStatus, 7000);
+
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+        };
+    }, [mongoUserId, clearLocalAccount]);
+
     // Check existing account & session on mount
     useEffect(() => {
         (async () => {
@@ -76,7 +137,7 @@ export function AuthProvider({ children }) {
             setIsLoading(false);
         })();
     }, []);
-    const register = useCallback(async (name, password, drawingData) => {
+    const register = useCallback(async (name, email, password, drawingData) => {
         try {
             // Capa extra de sanitización (Sanitization layer) para Prevenir Stored XSS
             const sanitizeString = (str) => {
@@ -100,6 +161,7 @@ export function AuthProvider({ children }) {
                 },
                 body: JSON.stringify({
                     username: cleanName,
+                    email: email.trim(),
                     password: password,
                     initials: cleanName.substring(0, 2).toUpperCase(),
                     avatar_url: null,
@@ -314,13 +376,14 @@ export function AuthProvider({ children }) {
         register,
         login,
         logout,
+        clearLocalAccount,
         verifySessionPassword,
         exportAccount,
         importAccount,
         saveProfile,
         loadProfile,
         setUsername,
-    }), [isLoading, isFirstTime, isAuthenticated, accountId, mongoUserId, username, register, login, logout, verifySessionPassword, exportAccount, importAccount, saveProfile, loadProfile, setUsername]);
+    }), [isLoading, isFirstTime, isAuthenticated, accountId, mongoUserId, username, register, login, logout, clearLocalAccount, verifySessionPassword, exportAccount, importAccount, saveProfile, loadProfile, setUsername]);
     return (
         <AuthContext.Provider value={value}>
             {children}

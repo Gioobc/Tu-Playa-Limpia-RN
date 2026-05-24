@@ -75,7 +75,7 @@ Accede a tus reportes aquí:
 ## ⚙️ Configuración Actual
 
 ```
-✅ MongoDB: mongodb+srv://hola:hola123456@cluster0.uc0vvkm.mongodb.net/
+✅ MongoDB: mongodb+srv://<username>:<password>@cluster0.uc0vvkm.mongodb.net/
 ✅ Database: tplreportes
 ✅ Collection: datosreportes
 ✅ API Port: 8000

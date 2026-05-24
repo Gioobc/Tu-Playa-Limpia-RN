@@ -25,6 +25,7 @@ export const GameProvider = ({ children }) => {
     const [cleanupHistory, setCleanupHistory] = useState([]);
     const [user, setUser] = useState({
         name: '...',
+        email: '',
         avatar: null,
         initials: '..',
         hasChangedUsername: false,

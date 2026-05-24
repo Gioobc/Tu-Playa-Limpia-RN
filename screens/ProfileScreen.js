@@ -516,6 +516,13 @@ export default function ProfileScreen({ navigation }) {
                         </View>
                     </GlassCard>
                     <GlassCard variant="default" style={[styles.infoCard, { marginTop: SPACING.sm }]}>
+                        <Ionicons name="mail-outline" size={rs(20)} color={colors.accent} />
+                        <View style={styles.infoContent}>
+                            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{t('auth_email_placeholder')}</Text>
+                            <Text style={[styles.infoValue, { color: colors.text }]}>{user.email || '—'}</Text>
+                        </View>
+                    </GlassCard>
+                    <GlassCard variant="default" style={[styles.infoCard, { marginTop: SPACING.sm }]}>
                         <Ionicons name="shield-checkmark-outline" size={rs(20)} color={colors.accent} />
                         <View style={styles.infoContent}>
                             <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{t('profile_security')}</Text>

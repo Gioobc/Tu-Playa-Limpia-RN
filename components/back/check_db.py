@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-MONGODB_URI = "mongodb+srv://hola:hola123456@cluster0.uc0vvkm.mongodb.net/"
+MONGODB_URI = os.getenv("MONGODB_URI")
 
 client = MongoClient(MONGODB_URI)
 
