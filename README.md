@@ -11,7 +11,7 @@ Tu Playa Limpia es una app pensada para que cualquier persona pueda participar e
 - 📷 **Escaneo con cámara** — Usa la cámara para detectar residuos y sumar progreso dentro de la app.
 - 📝 **Reportes de incidencias** — Registra situaciones como basura, estado de la playa o hallazgos importantes con ubicación e imagen.
 - 🏆 **Progreso y recompensas** — Gana puntos TPL, avanza de nivel y desbloquea contenido según tu participación.
-- 👛 **Wallet Web3** — Conecta una wallet para experiencias vinculadas a recompensas y activos digitales.
+- 👛 **Wallet Web3** — Conecta una wallet para experiencias vinculadas a recompensas y activos digitales, basadas en la red zkSYS Testnet de Syscoin.
 - 🎨 **Experiencia unificada** — La misma base de código funciona para web, Android e iOS.
 
 ---
