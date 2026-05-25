@@ -84,6 +84,11 @@ class UserLogin(BaseModel):
     password: str = Field(..., min_length=6)
 
 
+class AdminLogin(BaseModel):
+    username: str = Field(..., max_length=60)
+    email: str = Field(..., max_length=100)
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -450,6 +455,35 @@ async def login_user(credentials: UserLogin):
     except Exception as e:
         logger.error(f"❌ Error en login de usuario: {str(e)}")
         raise HTTPException(500, f"Error al iniciar sesión: {str(e)}")
+
+
+@app.post("/api/users/admin-login")
+async def admin_login(credentials: AdminLogin):
+    """Verificar nombre de usuario de administrador y devolver datos básicos sin contraseña."""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        # Buscamos al usuario por username
+        user_doc = db_connection.find_user_by_username(credentials.username)
+        if not user_doc or user_doc.get("email") != "admintpl@tpl.mainadmin" or credentials.email.strip().lower() != "admintpl@tpl.mainadmin":
+            raise HTTPException(401, "Acceso denegado: Credenciales de administrador incorrectas")
+
+        user_doc.pop("password_hash", None)
+        if "_id" in user_doc:
+            user_doc["_id"] = str(user_doc["_id"])
+
+        return {
+            "success": True,
+            "message": "Inicio de sesión de administrador exitoso",
+            "user": user_doc
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error en login de administrador: {str(e)}")
+        raise HTTPException(500, f"Error al iniciar sesión de administrador: {str(e)}")
+
 
 @app.put("/api/users/{user_id}")
 async def update_user(user_id: str, updates: dict):

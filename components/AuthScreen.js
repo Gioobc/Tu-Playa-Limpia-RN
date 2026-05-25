@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Platform, TouchableOpacity, TextInput, useWindowDimensions, Linking, Modal, FlatList, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Platform, TouchableOpacity, TextInput, useWindowDimensions, Linking, Modal, FlatList, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Haptics from 'expo-haptics';
@@ -25,6 +25,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useGame } from '../context/GameContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useWallet } from '../context/WalletContext';
 import { rs, rf, rh, SPACING, RADIUS } from '../constants/responsive';
 import { SPRING, DURATION } from '../constants/animations';
 import { BRAND } from '../constants/theme';
@@ -36,11 +37,14 @@ import GlassCard from './premium/GlassCard';
 import FlagIcon from './FlagIcon';
 export default function AuthScreen({ onAuthenticated }) {
     const { colors, isDark } = useTheme();
-    const { register: onRegister, login: onLogin, isFirstTime, importAccount: onImport, username: savedUsername } = useAuth();
+    const { register: onRegister, login: onLogin, loginAdmin: onLoginAdmin, isFirstTime, importAccount: onImport, username: savedUsername } = useAuth();
     const { user, updateUserProfile, reloadGameState } = useGame();
     const { t, language, setLanguage, LANGUAGES, LANGUAGE_LABELS } = useLanguage();
+    const { address: walletAddress, connectMetaMask, connectPali } = useWallet();
     const { height: winH } = useWindowDimensions();
     const [mode, setMode] = useState(isFirstTime ? 'choice' : 'login');
+    const [adminUsername, setAdminUsername] = useState('');
+    const [adminEmail, setAdminEmail] = useState('');
     const [showLangDropdown, setShowLangDropdown] = useState(false);
     const [drawingStrokes, setDrawingStrokes] = useState(null);
     const [showEmailModal, setShowEmailModal] = useState(false);
@@ -323,12 +327,41 @@ export default function AuthScreen({ onAuthenticated }) {
         setErrorText('');
         setMode('import_drawing');
     };
+    const handleAdminLogin = async () => {
+        const trimmed = adminUsername.trim();
+        const trimmedEmail = adminEmail.trim();
+        if (!trimmed) {
+            setErrorText(language === 'es' ? 'El nombre de usuario es requerido' : 'Username is required');
+            triggerShake();
+            return;
+        }
+        if (!trimmedEmail) {
+            setErrorText(language === 'es' ? 'El correo electrónico es requerido' : 'Email is required');
+            triggerShake();
+            return;
+        }
+
+        hapticLight();
+        setErrorText('');
+        setStatusText(language === 'es' ? 'Iniciando sesión...' : 'Logging in...');
+        
+        const result = await onLoginAdmin(trimmed, trimmedEmail);
+        if (result.success) {
+            hapticSuccess();
+            onAuthenticated();
+        } else {
+            hapticError();
+            triggerShake();
+            setErrorText(result.error || (language === 'es' ? 'Credenciales de administrador incorrectas' : 'Incorrect administrator credentials'));
+        }
+    };
     const contentStyle = useAnimatedStyle(() => ({
         opacity: contentOpacity.value,
         transform: [{ translateY: contentY.value }],
     }));
     const getTitle = () => {
         switch (mode) {
+            case 'admin_login': return "¿Eres un administrador? ¡Bienvenido al grupo!";
             case 'choice': return t('auth_welcome');
             case 'register_name': return t('auth_create_account');
             case 'register_password': return t('auth_create_account');
@@ -343,6 +376,7 @@ export default function AuthScreen({ onAuthenticated }) {
     };
     const getSubtitle = () => {
         switch (mode) {
+            case 'admin_login': return language === 'es' ? "Autenticación de Administrador" : "Administrator Authentication";
             case 'choice': return t('auth_your_impact');
             case 'register_name': return t('auth_enter_username');
             case 'register_password': return t('auth_create_password');
@@ -676,6 +710,116 @@ export default function AuthScreen({ onAuthenticated }) {
                     </Animated.View>
                 );
             }
+            if (mode === 'admin_login') {
+                return (
+                    <Animated.View entering={SlideInRight.springify()} style={styles.formContainer}>
+                        <GlassCard variant="default" style={styles.formCard}>
+                            <View style={styles.formIconRow}>
+                                <Ionicons name="shield-checkmark-outline" size={rs(28)} color={colors.accent} />
+                            </View>
+                            
+                            <TextInput
+                                style={[
+                                    styles.input,
+                                    { color: colors.text, borderColor: colors.border, backgroundColor: colors.glass },
+                                    errorText ? styles.inputError : null
+                                ]}
+                                placeholder={language === 'es' ? "Nombre de usuario" : "Username"}
+                                placeholderTextColor={colors.textMuted}
+                                value={adminUsername}
+                                onChangeText={(val) => {
+                                    setAdminUsername(val);
+                                    if (errorText) setErrorText('');
+                                }}
+                                autoCapitalize="none"
+                                autoFocus
+                                maxLength={30}
+                            />
+
+                            <TextInput
+                                style={[
+                                    styles.input,
+                                    { color: colors.text, borderColor: colors.border, backgroundColor: colors.glass },
+                                    errorText ? styles.inputError : null
+                                ]}
+                                placeholder={language === 'es' ? "Correo electrónico" : "Email address"}
+                                placeholderTextColor={colors.textMuted}
+                                value={adminEmail}
+                                onChangeText={(val) => {
+                                    setAdminEmail(val);
+                                    if (errorText) setErrorText('');
+                                }}
+                                autoCapitalize="none"
+                                keyboardType="email-address"
+                                maxLength={100}
+                            />
+                            
+                            {/* Wallet connection prompt for admin - OPTIONAL */}
+                            <View style={styles.adminWalletPrompt}>
+                                <Text style={[styles.adminWalletPromptTitle, { color: colors.text }]}>
+                                    {language === 'es' ? "Vincular Billetera Administrativa (Opcional)" : "Link Administrative Wallet (Optional)"}
+                                </Text>
+                                {walletAddress ? (
+                                    <View style={[styles.walletConnectedBadge, { backgroundColor: isDark ? 'rgba(34, 197, 94, 0.15)' : 'rgba(34, 197, 94, 0.1)' }]}>
+                                        <Ionicons name="checkmark-circle" size={18} color="#22c55e" style={{ marginRight: 6 }} />
+                                        <Text style={[styles.walletConnectedText, { color: '#22c55e' }]} numberOfLines={1}>
+                                            {walletAddress.slice(0, 8)}...{walletAddress.slice(-6)}
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <View>
+                                        <Text style={[styles.adminWalletPromptDesc, { color: colors.textSecondary }]}>
+                                            {language === 'es' ? "Puedes conectar una wallet para autorizar operaciones blockchain (opcional)." : "You can connect a wallet to authorize blockchain operations (optional)."}
+                                        </Text>
+                                        <View style={styles.adminWalletButtons}>
+                                            <TouchableOpacity 
+                                                style={[styles.miniWalletBtn, { backgroundColor: colors.glass, borderColor: colors.border }]}
+                                                onPress={() => { hapticLight(); connectPali(); }}
+                                            >
+                                                <Image source={require('../assets/logo-pali.png')} style={styles.miniWalletLogo} resizeMode="contain" />
+                                                <Text style={[styles.miniWalletBtnText, { color: colors.text }]}>Pali</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity 
+                                                style={[styles.miniWalletBtn, { backgroundColor: colors.glass, borderColor: colors.border }]}
+                                                onPress={() => { hapticLight(); connectMetaMask(); }}
+                                            >
+                                                <Image source={require('../assets/logo-metamask.png')} style={styles.miniWalletLogo} resizeMode="contain" />
+                                                <Text style={[styles.miniWalletBtnText, { color: colors.text }]}>MetaMask</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                )}
+                            </View>
+
+                            {errorText ? (
+                                <Animated.View entering={FadeInDown.duration(400)} style={[styles.errorBanner, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)' }]}>
+                                    <Ionicons name="alert-circle" size={rs(18)} color="#ef4444" style={{ marginRight: rs(8) }} />
+                                    <Text style={styles.errorBannerText}>{errorText}</Text>
+                                </Animated.View>
+                            ) : null}
+
+                            <TouchableOpacity
+                                style={[
+                                    styles.nextButton, 
+                                    { backgroundColor: isDark ? BRAND.oceanLight : BRAND.oceanDark },
+                                ]}
+                                onPress={handleAdminLogin}
+                                activeOpacity={0.85}
+                            >
+                                <Text style={styles.nextButtonText}>
+                                    {language === 'es' ? "Ingresar como Administrador" : "Log In as Administrator"}
+                                </Text>
+                                <Ionicons name="shield-checkmark" size={rs(18)} color="#fff" />
+                            </TouchableOpacity>
+                        </GlassCard>
+                        
+                        <TouchableOpacity style={styles.backButton} onPress={() => { setMode('choice'); setErrorText(''); }}>
+                            <Ionicons name="arrow-back" size={rs(18)} color={colors.textSecondary} />
+                            <Text style={[styles.backButtonText, { color: colors.textSecondary }]}>{t('auth_back')}</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+                );
+            }
             return null;
         })();
         return (
@@ -799,6 +943,15 @@ export default function AuthScreen({ onAuthenticated }) {
                     </Animated.View>
                 ) : (
                     renderFormContent()
+                )}
+                {mode === 'choice' && (
+                    <TouchableOpacity
+                        style={styles.adminAccessButton}
+                        onPress={() => { hapticLight(); setMode('admin_login'); setErrorText(''); }}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="key-outline" size={rs(20)} color={colors.textSecondary} />
+                    </TouchableOpacity>
                 )}
             </SafeAreaView>
         </View>
@@ -1022,5 +1175,73 @@ const styles = StyleSheet.create({
     },
     langMenuItemText: {
         fontSize: rf(14),
+    },
+    adminAccessButton: {
+        position: 'absolute',
+        bottom: Platform.OS === 'web' ? rs(24) : rs(16),
+        left: SPACING.lg,
+        width: rs(48),
+        height: rs(48),
+        borderRadius: rs(24),
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+        zIndex: 99,
+        elevation: 5,
+    },
+    adminWalletPrompt: {
+        marginTop: SPACING.md,
+        marginBottom: SPACING.lg,
+        padding: SPACING.md,
+        borderRadius: rs(16),
+        borderWidth: 1,
+        borderColor: 'rgba(13, 148, 136, 0.2)',
+        backgroundColor: 'rgba(13, 148, 136, 0.04)',
+    },
+    adminWalletPromptTitle: {
+        fontSize: rf(14),
+        fontWeight: '700',
+        marginBottom: rs(6),
+    },
+    adminWalletPromptDesc: {
+        fontSize: rf(12),
+        lineHeight: rf(18),
+        marginBottom: rs(12),
+    },
+    adminWalletButtons: {
+        flexDirection: 'row',
+        gap: SPACING.md,
+    },
+    miniWalletBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: rs(44),
+        borderRadius: rs(12),
+        borderWidth: 1,
+    },
+    miniWalletLogo: {
+        width: rs(18),
+        height: rs(18),
+        marginRight: rs(6),
+    },
+    miniWalletBtnText: {
+        fontSize: rf(12),
+        fontWeight: '700',
+    },
+    walletConnectedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: rs(8),
+        paddingHorizontal: rs(12),
+        borderRadius: rs(10),
+    },
+    walletConnectedText: {
+        fontSize: rf(13),
+        fontWeight: '600',
+        flex: 1,
     },
 });

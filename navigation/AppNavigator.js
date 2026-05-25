@@ -8,6 +8,7 @@ import { useGame } from '../context/GameContext';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useWallet } from '../context/WalletContext';
+import { useAuth } from '../context/AuthContext';
 import { BRAND } from '../constants/theme';
 import { rs, rh, SPACING, RADIUS, HEIGHT } from '../constants/responsive';
 import HomeScreen from '../screens/HomeScreen';
@@ -19,9 +20,35 @@ import ProfileScreen from '../screens/ProfileScreen';
 import BeachMapScreen from '../screens/BeachMapScreen';
 import BeachDetailScreen from '../screens/BeachDetailScreen';
 import BeachReportsScreen from '../screens/BeachReportsScreen';
+import AdminViewScreen from '../screens/AdminViewScreen';
 import AnimatedTabIcon from './AnimatedTabIcon';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+
+const linking = {
+  prefixes: ['tuplaya://', 'https://tuplayalimpia.com'],
+  config: {
+    initialRouteName: 'Auth',
+    screens: {
+      Auth: 'Auth',
+      MainTabs: {
+        path: 'MainTabs',
+        screens: {
+          Inicio: 'Inicio',
+          Mapa: 'Mapa',
+          Escanear: 'Escanear',
+          Premios: 'Premios',
+          Promos: 'Promos',
+          Reports: 'Reports',
+          ReportStatus: 'ReportStatus',
+        },
+      },
+      Profile: 'Profile',
+      NotFound: '*',
+    },
+  },
+};
+
 function LockedPromotionsScreen() {
     const { colors, isDark } = useTheme();
     const { t } = useLanguage();
@@ -91,6 +118,7 @@ function TabNavigator() {
     const { level } = useGame();
     const { colors, shadows, isDark } = useTheme();
     const { width } = useWindowDimensions();
+    const { username } = useAuth();
     const isPromotionsLocked = level < 2;
     const showSidebar = width >= 1024;
     return (
@@ -100,6 +128,7 @@ function TabNavigator() {
             { }
             <View style={{ flex: 1 }}>
                 <Tab.Navigator
+                    initialRouteName={username === 'administrador' ? "Reports" : "Inicio"}
                     screenOptions={{
                         headerShown: false,
                         tabBarShowLabel: false,
@@ -175,6 +204,20 @@ function TabNavigator() {
                                     isLocked={isPromotionsLocked}
                                 />
                             )
+                        }}
+                    />
+                    <Tab.Screen
+                        name="Reports"
+                        component={AdminViewScreen}
+                        options={{
+                            tabBarButton: () => null
+                        }}
+                    />
+                    <Tab.Screen
+                        name="ReportStatus"
+                        component={BeachReportsScreen}
+                        options={{
+                            tabBarButton: () => null
                         }}
                     />
                 </Tab.Navigator>

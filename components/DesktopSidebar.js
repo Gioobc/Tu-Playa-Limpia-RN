@@ -67,7 +67,7 @@ const SidebarItem = ({ icon, label, routeName, isActive, onPress, index }) => {
 export default function DesktopSidebar() {
     const { colors, isDark } = useTheme();
     const { user, level } = useGame();
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
     const navigation = useNavigation();
 
     const navItems = [
@@ -76,6 +76,8 @@ export default function DesktopSidebar() {
         { label: t('sidebar_scan'), icon: 'scan', route: 'Escanear' },
         { label: t('sidebar_rewards'), icon: 'trophy', route: 'Premios' },
         { label: t('sidebar_promos'), icon: 'gift', route: 'Promos', locked: level < 2 },
+        { label: language === 'es' ? 'Reportes' : 'Reports', icon: 'flag', route: 'Reports' },
+        { label: language === 'es' ? 'Estado de Reportes' : 'Report Status', icon: 'checkbox', route: 'ReportStatus' },
     ];
 
     const activeRoute = useNavigationState(state => {

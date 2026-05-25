@@ -366,6 +366,65 @@ export function AuthProvider({ children }) {
             return null;
         }
     }, []);
+    const loginAdmin = useCallback(async (adminUser, adminEmail) => {
+        try {
+            const cleanName = adminUser.trim();
+            const cleanEmail = adminEmail.trim().toLowerCase();
+            const apiUrl = ENV.API_BASE_URL;
+            const response = await fetch(`${apiUrl}/api/users/admin-login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ username: cleanName, email: cleanEmail }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || `Error: ${response.status}`);
+            }
+
+            const backendData = await response.json();
+            const userDoc = backendData.user;
+            
+            // Set up local storage session
+            const newAccountId = `0xadmin${Date.now().toString(16)}`.slice(0, 42).padEnd(42, '0');
+            const accountData = {
+                accountId: newAccountId,
+                createdAt: new Date().toISOString(),
+                version: 2,
+                mongoUserId: userDoc._id,
+            };
+
+            const profileData = {
+                name: userDoc.username,
+                email: userDoc.email,
+                initials: userDoc.initials || 'AD',
+            };
+
+            await Promise.all([
+                AsyncStorage.setItem(KEYS.USERNAME, userDoc.username),
+                AsyncStorage.setItem(KEYS.ACCOUNT, JSON.stringify(accountData)),
+                AsyncStorage.setItem(KEYS.SESSION, 'true'),
+                AsyncStorage.setItem(KEYS.REGISTRATION_DATE, new Date().toLocaleDateString()),
+                AsyncStorage.setItem(KEYS.PROFILE, JSON.stringify(profileData)),
+                AsyncStorage.setItem('@tpl_game_user_meta', JSON.stringify(profileData))
+            ]);
+
+            setAccountId(newAccountId);
+            setMongoUserId(userDoc._id);
+            setUsername(userDoc.username);
+            setIsFirstTime(false);
+            setIsAuthenticated(true);
+
+            DeviceEventEmitter.emit('TPL_ACCOUNT_IMPORTED');
+
+            return { success: true };
+        } catch (e) {
+            console.error('Admin login error:', e);
+            return { success: false, error: e.message };
+        }
+    }, []);
     const value = useMemo(() => ({
         isLoading,
         isFirstTime,
@@ -375,6 +434,7 @@ export function AuthProvider({ children }) {
         username,
         register,
         login,
+        loginAdmin,
         logout,
         clearLocalAccount,
         verifySessionPassword,
@@ -383,7 +443,7 @@ export function AuthProvider({ children }) {
         saveProfile,
         loadProfile,
         setUsername,
-    }), [isLoading, isFirstTime, isAuthenticated, accountId, mongoUserId, username, register, login, logout, clearLocalAccount, verifySessionPassword, exportAccount, importAccount, saveProfile, loadProfile, setUsername]);
+    }), [isLoading, isFirstTime, isAuthenticated, accountId, mongoUserId, username, register, login, loginAdmin, logout, clearLocalAccount, verifySessionPassword, exportAccount, importAccount, saveProfile, loadProfile, setUsername]);
     return (
         <AuthContext.Provider value={value}>
             {children}
