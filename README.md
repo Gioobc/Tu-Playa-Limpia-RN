@@ -1,4 +1,4 @@
-# Tu Playa Limpia
+# Tu Playa Limpia !
 
 Tu Playa Limpia es una app pensada para que cualquier persona pueda participar en el cuidado de las playas en Perú. La experiencia está centrada en cuatro acciones simples: descubrir playas, escanear residuos, reportar problemas y ganar recompensas por contribuir.
 
@@ -16,7 +16,7 @@ Tu Playa Limpia es una app pensada para que cualquier persona pueda participar e
 
 ---
 
-## Cómo funciona para el usuario
+## ¿Cómo funciona?
 
 La app guía al usuario desde el inicio hasta la participación activa. Primero puede crear su cuenta o entrar con su perfil. Después accede al mapa de playas, donde ve puntos de interés, detalles de cada lugar y el estado general de la zona.
 
@@ -24,7 +24,7 @@ Desde la pantalla de escaneo, la persona puede usar la cámara para detectar res
 
 El sistema también contempla una parte de motivación: el usuario gana puntos TPL, avanza de nivel y desbloquea contenidos o promociones según su progreso. Si conecta su wallet, puede ver una integración más completa con recompensas y activos digitales.
 
-## Lo que puede hacer
+## Lo que puedes hacer:
 
 - Explorar playas y ver su información principal.
 - Revisar el estado o historial de reportes de una playa.
