@@ -620,6 +620,24 @@ async def get_users(limit: int = 50):
         logger.error(f"❌ Error obteniendo usuarios: {str(e)}")
         raise HTTPException(500, f"Error al obtener usuarios: {str(e)}")
 
+
+@app.get("/api/admin/stats")
+async def get_admin_stats():
+    """Obtener estadísticas globales para el panel de administración."""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+        
+        stats = db_connection.get_admin_stats()
+        return {
+            "success": True,
+            "stats": stats
+        }
+    except Exception as e:
+        logger.error(f"❌ Error en endpoint de estadísticas de administración: {str(e)}")
+        raise HTTPException(500, f"Error al obtener estadísticas: {str(e)}")
+
+
 @app.post("/scan")
 async def scan(request: Request):
     # Leer el cuerpo raw (tal cual lo manda el frontend)

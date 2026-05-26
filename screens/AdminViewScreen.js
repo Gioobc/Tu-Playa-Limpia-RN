@@ -20,6 +20,11 @@ import { useWallet } from '../context/WalletContext';
 import { rs, rf, rh, SPACING, RADIUS } from '../constants/responsive';
 import { BRAND, GRADIENTS } from '../constants/theme';
 import GlassCard from '../components/premium/GlassCard';
+import ENV from '../constants/env';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+
+const API_URL = ENV.API_BASE_URL;
 
 // Stat Card Component
 const StatCard = ({ icon, trendText, trendColor, label, value, delay = 0 }) => {
@@ -58,6 +63,259 @@ export default function AdminViewScreen() {
     const isDesktop = width >= 1024;
 
     const [selectedRange, setSelectedRange] = useState('6months');
+    const [stats, setStats] = useState({
+        total_scans: 0,
+        bottle_scans: 0,
+        can_scans: 0,
+        plastic_scans: 0,
+        total_users: 0,
+        total_reports: 0,
+        total_beaches: 0,
+    });
+    const [loading, setLoading] = useState(true);
+
+    const fetchStats = async () => {
+        setLoading(true);
+        try {
+            const response = await fetch(`${API_URL}/api/admin/stats`);
+            const data = await response.json();
+            if (data.success) {
+                setStats(data.stats);
+            }
+        } catch (error) {
+            console.error('Error fetching admin stats:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDownloadPDF = async () => {
+        try {
+            const maxBar = Math.max(stats.plastic_scans, stats.bottle_scans, stats.can_scans, (stats.total_scans - stats.plastic_scans - stats.bottle_scans - stats.can_scans), 1);
+            const plasticBarH = Math.round((stats.plastic_scans / maxBar) * 160);
+            const bottleBarH = Math.round((stats.bottle_scans / maxBar) * 160);
+            const canBarH = Math.round((stats.can_scans / maxBar) * 160);
+            const othersBarH = Math.round(((stats.total_scans - stats.plastic_scans - stats.bottle_scans - stats.can_scans) / maxBar) * 160);
+
+            // conic-gradient stops
+            const p1 = plasticPercent;
+            const p2 = p1 + bottlePercent;
+            const p3 = p2 + canPercent;
+
+            const html = `
+                <html>
+                <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+                    <style>
+                        body {
+                            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                            padding: 30px;
+                            color: #334155;
+                            background-color: #ffffff;
+                        }
+                        .header {
+                            text-align: center;
+                            margin-bottom: 30px;
+                            border-bottom: 2px solid #0d9488;
+                            padding-bottom: 20px;
+                        }
+                        .header h1 { color: #0d9488; margin: 0; font-size: 28px; }
+                        .header p { margin: 5px 0 0 0; color: #64748b; }
+                        .section-title {
+                            font-size: 18px;
+                            color: #0f172a;
+                            margin-top: 30px;
+                            margin-bottom: 15px;
+                            border-bottom: 1px solid #e2e8f0;
+                            padding-bottom: 5px;
+                            font-weight: 700;
+                        }
+                        .grid { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 30px; }
+                        .card {
+                            flex: 1;
+                            min-width: 160px;
+                            border: 1px solid #e2e8f0;
+                            border-radius: 12px;
+                            padding: 20px;
+                            background-color: #f8fafc;
+                        }
+                        .card-label { font-size: 11px; color: #64748b; text-transform: uppercase; margin-bottom: 8px; font-weight: bold; letter-spacing: 0.5px; }
+                        .card-value { font-size: 22px; color: #0f172a; font-weight: bold; }
+                        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+                        th, td { padding: 11px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+                        th { background-color: #0d9488; color: #ffffff; font-weight: bold; }
+                        tr:nth-child(even) { background-color: #f8fafc; }
+
+                        /* ── Charts layout ── */
+                        .charts-row { display: flex; gap: 40px; align-items: flex-start; margin-top: 10px; }
+
+                        /* Bar chart */
+                        .bar-chart-wrap { flex: 1; }
+                        .bar-chart {
+                            display: flex;
+                            align-items: flex-end;
+                            gap: 18px;
+                            height: 180px;
+                            border-left: 2px solid #cbd5e1;
+                            border-bottom: 2px solid #cbd5e1;
+                            padding: 0 16px 0 8px;
+                        }
+                        .bar-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+                        .bar {
+                            width: 38px;
+                            border-radius: 6px 6px 0 0;
+                        }
+                        .bar-lbl { font-size: 11px; color: #64748b; font-weight: 600; margin-top: 6px; }
+                        .bar-val { font-size: 10px; color: #0f172a; font-weight: 700; }
+
+                        /* Donut chart */
+                        .donut-wrap { width: 220px; display: flex; flex-direction: column; align-items: center; }
+                        .donut {
+                            width: 160px;
+                            height: 160px;
+                            border-radius: 50%;
+                            background: conic-gradient(
+                                #0d9488 0% ${p1}%,
+                                #0ea5e9 ${p1}% ${p2}%,
+                                #d4a574 ${p2}% ${p3}%,
+                                #64748b ${p3}% 100%
+                            );
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            position: relative;
+                        }
+                        .donut-hole {
+                            width: 100px;
+                            height: 100px;
+                            border-radius: 50%;
+                            background: #ffffff;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                        }
+                        .donut-total { font-size: 18px; font-weight: 800; color: #0f172a; }
+                        .donut-lbl { font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 1px; }
+                        .legend { margin-top: 14px; width: 100%; }
+                        .legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; color: #334155; }
+                        .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>TU PLAYA LIMPIA</h1>
+                        <p>Reporte de Impacto Ambiental &mdash; Vista de Administración</p>
+                        <p>Generado el: ${new Date().toLocaleString()}</p>
+                    </div>
+
+                    <div class="section-title">Resumen de Métricas Globales</div>
+                    <div class="grid">
+                        <div class="card">
+                            <div class="card-label">Residuos Recolectados</div>
+                            <div class="card-value">${stats.total_scans.toLocaleString()} uds</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-label">Playas Intervenidas</div>
+                            <div class="card-value">${stats.total_beaches}</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-label">Guardianes Activos</div>
+                            <div class="card-value">${stats.total_users}</div>
+                        </div>
+                    </div>
+
+                    <div class="section-title">Composición de Residuos</div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Material</th>
+                                <th>Escaneos</th>
+                                <th>% del Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Plásticos</td><td>${stats.plastic_scans.toLocaleString()}</td><td>${plasticPercent}%</td></tr>
+                            <tr><td>Botellas</td><td>${stats.bottle_scans.toLocaleString()}</td><td>${bottlePercent}%</td></tr>
+                            <tr><td>Latas</td><td>${stats.can_scans.toLocaleString()}</td><td>${canPercent}%</td></tr>
+                            <tr><td>Otros</td><td>${(stats.total_scans - stats.plastic_scans - stats.bottle_scans - stats.can_scans).toLocaleString()}</td><td>${othersPercent}%</td></tr>
+                        </tbody>
+                    </table>
+
+                    <div class="section-title">Visualización de Residuos</div>
+                    <div class="charts-row">
+
+                        <!-- Gráfico de Barras -->
+                        <div class="bar-chart-wrap">
+                            <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:12px;">Gráfico de Barras por Material</div>
+                            <div class="bar-chart">
+                                <div class="bar-col">
+                                    <span class="bar-val">${plasticPercent}%</span>
+                                    <div class="bar" style="height:${plasticBarH}px;background:#0d9488;"></div>
+                                    <span class="bar-lbl">Plásticos</span>
+                                </div>
+                                <div class="bar-col">
+                                    <span class="bar-val">${bottlePercent}%</span>
+                                    <div class="bar" style="height:${bottleBarH}px;background:#0ea5e9;"></div>
+                                    <span class="bar-lbl">Botellas</span>
+                                </div>
+                                <div class="bar-col">
+                                    <span class="bar-val">${canPercent}%</span>
+                                    <div class="bar" style="height:${canBarH}px;background:#d4a574;"></div>
+                                    <span class="bar-lbl">Latas</span>
+                                </div>
+                                <div class="bar-col">
+                                    <span class="bar-val">${othersPercent}%</span>
+                                    <div class="bar" style="height:${othersBarH}px;background:#64748b;"></div>
+                                    <span class="bar-lbl">Otros</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Gráfico Circular -->
+                        <div class="donut-wrap">
+                            <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:12px;">Distribución Circular</div>
+                            <div class="donut">
+                                <div class="donut-hole">
+                                    <span class="donut-total">${stats.total_scans.toLocaleString()}</span>
+                                    <span class="donut-lbl">TOTAL</span>
+                                </div>
+                            </div>
+                            <div class="legend">
+                                <div class="legend-row"><div class="legend-dot" style="background:#0d9488;"></div>Plásticos &mdash; ${plasticPercent}%</div>
+                                <div class="legend-row"><div class="legend-dot" style="background:#0ea5e9;"></div>Botellas &mdash; ${bottlePercent}%</div>
+                                <div class="legend-row"><div class="legend-dot" style="background:#d4a574;"></div>Latas &mdash; ${canPercent}%</div>
+                                <div class="legend-row"><div class="legend-dot" style="background:#64748b;"></div>Otros &mdash; ${othersPercent}%</div>
+                            </div>
+                        </div>
+
+                    </div>
+                </body>
+                </html>
+            `;
+
+            if (Platform.OS === 'web') {
+                const printWindow = window.open('', '_blank');
+                if (printWindow) {
+                    printWindow.document.write(html);
+                    printWindow.document.close();
+                    printWindow.print();
+                } else {
+                    alert(language === 'es' ? 'Por favor permite las ventanas emergentes para descargar el PDF' : 'Please allow popups to download the PDF');
+                }
+            } else {
+                const { uri } = await Print.printToFileAsync({ html });
+                await Sharing.shareAsync(uri, { UTM: 'application/pdf', mimeType: 'application/pdf', dialogTitle: 'Descargar Reporte TPL' });
+            }
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            alert(language === 'es' ? 'Error al generar el PDF' : 'Error generating PDF');
+        }
+    };
+
+    useEffect(() => {
+        fetchStats();
+    }, []);
 
     // Layout configuration
     const statCardWidth = isDesktop 
@@ -73,11 +331,17 @@ export default function AdminViewScreen() {
         { month: 'JUN', value: 95 },
     ];
 
+    const totalScansForPercent = stats.total_scans || 1; // avoid division by zero
+    const plasticPercent = Math.round((stats.plastic_scans / totalScansForPercent) * 100);
+    const bottlePercent = Math.round((stats.bottle_scans / totalScansForPercent) * 100);
+    const canPercent = Math.round((stats.can_scans / totalScansForPercent) * 100);
+    const othersPercent = Math.max(0, 100 - (plasticPercent + bottlePercent + canPercent));
+
     const materials = [
-        { name: language === 'es' ? 'Plástico' : 'Plastic', percent: 45, color: '#0d9488' },
-        { name: language === 'es' ? 'Vidrio' : 'Glass', percent: 25, color: '#0ea5e9' },
-        { name: language === 'es' ? 'Metal' : 'Metal', percent: 20, color: '#d4a574' },
-        { name: language === 'es' ? 'Otros' : 'Others', percent: 10, color: '#64748b' },
+        { name: language === 'es' ? 'Plásticos' : 'Plastics', percent: stats.total_scans ? plasticPercent : 0, color: '#0d9488' },
+        { name: language === 'es' ? 'Botellas' : 'Bottles', percent: stats.total_scans ? bottlePercent : 0, color: '#0ea5e9' },
+        { name: language === 'es' ? 'Latas' : 'Cans', percent: stats.total_scans ? canPercent : 0, color: '#d4a574' },
+        { name: language === 'es' ? 'Otros' : 'Others', percent: stats.total_scans ? othersPercent : 0, color: '#64748b' },
     ];
 
     return (
@@ -105,7 +369,10 @@ export default function AdminViewScreen() {
                         </View>
                         
                         <View style={styles.actionButtons}>
-                            <TouchableOpacity style={[styles.btnSecondary, { borderColor: isLight ? '#cbd5e1' : colors.border }]}>
+                            <TouchableOpacity 
+                                style={[styles.btnSecondary, { borderColor: isLight ? '#cbd5e1' : colors.border }]}
+                                onPress={handleDownloadPDF}
+                            >
                                 <Ionicons name="download-outline" size={rs(16)} color={colors.text} style={styles.btnIcon} />
                                 <Text style={[styles.btnTextSecondary, { color: colors.text }]}>
                                     {language === 'es' ? 'Descargar PDF' : 'Download PDF'}
@@ -165,15 +432,15 @@ export default function AdminViewScreen() {
                             trendText="+12% este mes"
                             trendColor="#0d9488"
                             label={language === 'es' ? 'Residuos Recolectados' : 'Waste Collected'}
-                            value="12,450 kg"
+                            value={loading ? '...' : `${stats.total_scans.toLocaleString()} uds`}
                             delay={100}
                         />
                         <StatCard
                             icon="umbrella-outline"
-                            trendText="8 nuevas"
+                            trendText={language === 'es' ? 'Registradas' : 'Registered'}
                             trendColor="#0ea5e9"
                             label={language === 'es' ? 'Playas Intervenidas' : 'Beaches Cleaned'}
-                            value="48"
+                            value={loading ? '...' : stats.total_beaches.toString()}
                             delay={200}
                         />
                         <StatCard
@@ -186,10 +453,10 @@ export default function AdminViewScreen() {
                         />
                         <StatCard
                             icon="people-outline"
-                            trendText="Activos ahora"
+                            trendText={language === 'es' ? 'Registrados' : 'Registered'}
                             trendColor="#22c55e"
                             label={language === 'es' ? 'Guardianes Activos' : 'Active Guardians'}
-                            value="3,150"
+                            value={loading ? '...' : stats.total_users.toString()}
                             delay={400}
                         />
                     </View>
@@ -259,7 +526,9 @@ export default function AdminViewScreen() {
                                     <View style={[styles.donutOuter, { borderColor: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.08)' }]}>
                                         {/* Nested Circle for Center Text */}
                                         <View style={[styles.donutInner, { backgroundColor: isLight ? '#ffffff' : colors.card }]}>
-                                            <Text style={[styles.donutValue, { color: colors.text }]}>12.4t</Text>
+                                            <Text style={[styles.donutValue, { color: colors.text }]}>
+                                                {loading ? '...' : stats.total_scans.toLocaleString()}
+                                            </Text>
                                             <Text style={[styles.donutLabel, { color: colors.textMuted }]}>TOTAL</Text>
                                         </View>
                                         

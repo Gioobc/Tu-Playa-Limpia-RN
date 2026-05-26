@@ -225,6 +225,62 @@ class MongoDBConnection:
             logger.error(f"❌ Error obteniendo playas: {e}")
             return []
 
+    def get_admin_stats(self):
+        """Obtener estadísticas globales de escaneos y conteos para administración"""
+        try:
+            user_collection = self.get_user_collection()
+            
+            # Sumar scans de todos los usuarios
+            pipeline = [
+                {
+                    "$group": {
+                        "_id": None,
+                        "total_scans": {"$sum": {"$ifNull": ["$total_scans", 0]}},
+                        "bottle_scans": {"$sum": {"$ifNull": ["$bottle_scans", 0]}},
+                        "can_scans": {"$sum": {"$ifNull": ["$can_scans", 0]}},
+                        "plastic_scans": {"$sum": {"$ifNull": ["$plastic_scans", 0]}}
+                    }
+                }
+            ]
+            
+            results = list(user_collection.aggregate(pipeline))
+            stats = {}
+            if results:
+                stats = results[0]
+                stats.pop("_id", None)
+            else:
+                stats = {
+                    "total_scans": 0,
+                    "bottle_scans": 0,
+                    "can_scans": 0,
+                    "plastic_scans": 0
+                }
+                
+            # Obtener conteo de usuarios
+            stats["total_users"] = user_collection.count_documents({})
+            
+            # Obtener conteo de reportes
+            report_collection = self.get_collection()
+            stats["total_reports"] = report_collection.count_documents({})
+            
+            # Obtener conteo de playas
+            db_beaches = self._client[BEACHES_DB_NAME]
+            beaches_collection = db_beaches[BEACHES_COLLECTION]
+            stats["total_beaches"] = beaches_collection.count_documents({})
+            
+            return stats
+        except Exception as e:
+            logger.error(f"❌ Error calculando estadísticas de administración: {e}")
+            return {
+                "total_scans": 0,
+                "bottle_scans": 0,
+                "can_scans": 0,
+                "plastic_scans": 0,
+                "total_users": 0,
+                "total_reports": 0,
+                "total_beaches": 0
+            }
+
     def close(self):
         """Cerrar conexión"""
         if self._client:
