@@ -1,6 +1,6 @@
 # Sample Hardhat 3 Beta Project (minimal)
 
-This project has a minimal setup of Hardhat 3 Beta, without any plugins.
+This project has a minimal setup of Hardhat 3 Beta, zkSync plugins were added in order to connect zkSYS Devnet network.
 
 ## What's included?
 
