@@ -114,21 +114,22 @@ function LockedTabIcon({ name, size, focused, isLocked }) {
 import { useWindowDimensions } from 'react-native';
 import DesktopSidebar from '../components/DesktopSidebar';
 import { isDesktop } from '../constants/responsive';
-function TabNavigator() {
+function TabNavigator({ isAdmin }) {
     const { level } = useGame();
     const { colors, shadows, isDark } = useTheme();
     const { width } = useWindowDimensions();
     const { username } = useAuth();
     const isPromotionsLocked = level < 2;
     const showSidebar = width >= 1024;
+    const isAdminView = isAdmin || username === 'administrador';
     return (
         <View style={{ flex: 1, flexDirection: 'row' }}>
             { }
-            {showSidebar && <DesktopSidebar />}
+            {showSidebar && <DesktopSidebar isAdmin={isAdminView} />}
             { }
             <View style={{ flex: 1 }}>
                 <Tab.Navigator
-                    initialRouteName={username === 'administrador' ? "Reports" : "Inicio"}
+                    initialRouteName={isAdminView ? "Reports" : "Inicio"}
                     screenOptions={{
                         headerShown: false,
                         tabBarShowLabel: false,
@@ -156,70 +157,104 @@ function TabNavigator() {
                         ],
                     }}
                 >
-                    <Tab.Screen
-                        name="Inicio"
-                        component={HomeScreen}
-                        options={{
-                            tabBarIcon: ({ focused }) => (
-                                <AnimatedTabIcon name="home" size={24} focused={focused} />
-                            )
-                        }}
-                    />
-                    <Tab.Screen
-                        name="Mapa"
-                        component={BeachMapScreen}
-                        options={{
-                            tabBarIcon: ({ focused }) => (
-                                <AnimatedTabIcon name="map" size={24} focused={focused} />
-                            )
-                        }}
-                    />
-                    <Tab.Screen
-                        name="Escanear"
-                        component={ScanScreen}
-                        options={{
-                            tabBarIcon: ({ focused }) => (
-                                <AnimatedTabIcon name="scan" size={24} focused={focused} />
-                            )
-                        }}
-                    />
-                    <Tab.Screen
-                        name="Premios"
-                        component={RewardsScreen}
-                        options={{
-                            tabBarIcon: ({ focused }) => (
-                                <AnimatedTabIcon name="trophy" size={24} focused={focused} />
-                            )
-                        }}
-                    />
-                    <Tab.Screen
-                        name="Promos"
-                        component={isPromotionsLocked ? LockedPromotionsScreen : PromotionsScreen}
-                        options={{
-                            tabBarIcon: ({ focused }) => (
-                                <LockedTabIcon
-                                    name="gift"
-                                    size={24}
-                                    focused={focused}
-                                    isLocked={isPromotionsLocked}
-                                />
-                            )
-                        }}
-                    />
-                    <Tab.Screen
-                        name="Reports"
-                        component={AdminViewScreen}
-                        options={{
-                            tabBarButton: () => null
-                        }}
-                    />
-                    <Tab.Screen
-                        name="ReportStatus"
-                        component={BeachReportsScreen}
-                        options={{
-                            tabBarButton: () => null
-                        }}
-                    />
+                    {isAdminView ? (
+                        <>
+                            <Tab.Screen
+                                name="Reports"
+                                component={AdminViewScreen}
+                                options={{
+                                    tabBarIcon: ({ focused }) => (
+                                        <AnimatedTabIcon name="shield" size={24} focused={focused} />
+                                    )
+                                }}
+                            />
+                            <Tab.Screen
+                                name="ReportStatus"
+                                component={BeachReportsScreen}
+                                options={{
+                                    tabBarIcon: ({ focused }) => (
+                                        <AnimatedTabIcon name="document-text" size={24} focused={focused} />
+                                    )
+                                }}
+                            />
+                            <Tab.Screen
+                                name="Profile"
+                                component={ProfileScreen}
+                                options={{
+                                    tabBarIcon: ({ focused }) => (
+                                        <AnimatedTabIcon name="person" size={24} focused={focused} />
+                                    )
+                                }}
+                            />
+                        </>
+                    ) : (
+                        <>
+                            <Tab.Screen
+                                name="Inicio"
+                                component={HomeScreen}
+                                options={{
+                                    tabBarIcon: ({ focused }) => (
+                                        <AnimatedTabIcon name="home" size={24} focused={focused} />
+                                    )
+                                }}
+                            />
+                            <Tab.Screen
+                                name="Mapa"
+                                component={BeachMapScreen}
+                                options={{
+                                    tabBarIcon: ({ focused }) => (
+                                        <AnimatedTabIcon name="map" size={24} focused={focused} />
+                                    )
+                                }}
+                            />
+                            <Tab.Screen
+                                name="Escanear"
+                                component={ScanScreen}
+                                options={{
+                                    tabBarIcon: ({ focused }) => (
+                                        <AnimatedTabIcon name="scan" size={24} focused={focused} />
+                                    )
+                                }}
+                            />
+                            <Tab.Screen
+                                name="Premios"
+                                component={RewardsScreen}
+                                options={{
+                                    tabBarIcon: ({ focused }) => (
+                                        <AnimatedTabIcon name="trophy" size={24} focused={focused} />
+                                    )
+                                }}
+                            />
+                            <Tab.Screen
+                                name="Promos"
+                                component={isPromotionsLocked ? LockedPromotionsScreen : PromotionsScreen}
+                                options={{
+                                    tabBarIcon: ({ focused }) => (
+                                        <LockedTabIcon
+                                            name="gift"
+                                            size={24}
+                                            focused={focused}
+                                            isLocked={isPromotionsLocked}
+                                        />
+                                    )
+                                }}
+                            />
+                            <Tab.Screen
+                                name="Reports"
+                                component={AdminViewScreen}
+                                options={{
+                                    tabBarButton: () => null
+                                }}
+                            />
+                            <Tab.Screen
+                                name="ReportStatus"
+                                component={BeachReportsScreen}
+                                options={{
+                                    tabBarButton: () => null
+                                }}
+                            />
+                        </>
+                    )}
                 </Tab.Navigator>
             </View>
         </View>
@@ -227,7 +262,7 @@ function TabNavigator() {
 }
 import WalletConnectScreen from '../components/WalletConnectScreen';
 
-export default function AppNavigator({ isAuthenticated, isFirstTime, onRegister, onLogin, onImport, username }) {
+export default function AppNavigator({ isAuthenticated, isFirstTime, onRegister, onLogin, onImport, username, isAdmin }) {
     const { address, hasSkippedConnection, setHasSkippedConnection } = useWallet();
 
     if (!isAuthenticated) {
@@ -251,7 +286,7 @@ export default function AppNavigator({ isAuthenticated, isFirstTime, onRegister,
     }
 
     // Si ya está autenticado pero aún no tiene Wallet ni ha decidido omitirlo, forzamos WalletConnectScreen
-    if (!address && !hasSkippedConnection) {
+    if (!isAdmin && !address && !hasSkippedConnection) {
         return (
             <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
                 <Stack.Screen name="WalletConnect">
@@ -269,7 +304,9 @@ export default function AppNavigator({ isAuthenticated, isFirstTime, onRegister,
     // Ruta Principal con Tabs
     return (
         <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
-            <Stack.Screen name="MainTabs" component={TabNavigator} />
+            <Stack.Screen name="MainTabs">
+                {props => <TabNavigator {...props} isAdmin={isAdmin} />}
+            </Stack.Screen>
             <Stack.Screen
                 name="Profile"
                 component={ProfileScreen}

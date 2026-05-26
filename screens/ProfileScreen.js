@@ -19,6 +19,7 @@ import Animated, {
 import { useGame } from '../context/GameContext';
 import { useTheme } from '../context/ThemeContext';
 import { useWallet } from '../context/WalletContext';
+import ENV from '../constants/env';
 import { BRAND } from '../constants/theme';
 import { useLanguage } from '../context/LanguageContext';
 import { rs, rf, rh, SPACING, RADIUS } from '../constants/responsive';
@@ -38,8 +39,8 @@ export default function ProfileScreen({ navigation }) {
     const { user, updateUserProfile, nfts, points, level, scannedItems, unlockNFT } = useGame();
     const { colors, shadows, isDark, themeMode, setDarkMode, setLightMode, setSystemMode, THEME_MODES } = useTheme();
     const { t, language, setLanguage, LANGUAGES, LANGUAGE_LABELS, isAutoMode } = useLanguage();
-    const { verifySessionPassword, exportAccount } = useAuth();
-    const { address, connectMetaMask, connectPali } = useWallet();
+    const { verifySessionPassword, exportAccount, mongoUserId, clearLocalAccount } = useAuth();
+    const { address, connectMetaMask, connectPali, disconnectWallet } = useWallet();
     const [isEditingName, setIsEditingName] = useState(false);
     const [newName, setNewName] = useState(user.name);
     const [showImagePicker, setShowImagePicker] = useState(false);
@@ -57,6 +58,9 @@ export default function ProfileScreen({ navigation }) {
     const [isExporting, setIsExporting] = useState(false);
     // Visibility State
     const [showPassword, setShowPassword] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [showDeleteSuccessModal, setShowDeleteSuccessModal] = useState(false);
+    const [deleteSuccessMessage, setDeleteSuccessMessage] = useState('');
     // ── Milestone Checks ──
     useEffect(() => {
         const checkMilestones = async () => {
@@ -177,71 +181,27 @@ export default function ProfileScreen({ navigation }) {
     };
     const handleExportProfile = async () => {
         setExportError('');
-        setIsExporting(true);
-        if (exportStep === 'verify_session') {
-            const isValid = await verifySessionPassword(sessionPassword);
-            if (!isValid) {
-                setExportError(t('export_error_session'));
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                setIsExporting(false);
-                return;
-            }
-            setExportStep('create_file_pass');
-            setIsExporting(false);
-        } else if (exportStep === 'create_file_pass') {
-            if (filePassword.length < 6) {
-                setExportError(t('export_error_length'));
-                setIsExporting(false);
-                return;
-            }
-            if (filePassword !== filePasswordConfirm) {
-                setExportError(t('export_error_match'));
-                setIsExporting(false);
-                return;
-            }
-            const liveAccountData = {
-                points,
-                nfts,
-                scannedItems,
-                level
-            };
-            const liveProfileData = user;
-            const result = await exportAccount(sessionPassword, filePassword, liveAccountData, liveProfileData);
+
+        try {
+            const result = await exportAccount(sessionPassword, filePassword, filePasswordConfirm);
             if (result.success) {
-                try {
-                    const fileName = `tpl_profile_${user.name.replace(/\s+/g, '_')}_${Date.now()}.json`;
-                    if (Platform.OS === 'web') {
-                        const blob = new Blob([result.data], { type: 'application/json' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = fileName;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                        showSuccess(t('export_success'));
-                    } else {
-                        const FileSystem = require('expo-file-system');
-                        const Sharing = require('expo-sharing');
-                        const fileUri = FileSystem.documentDirectory + fileName;
-                        await FileSystem.writeAsStringAsync(fileUri, result.data, { encoding: FileSystem.EncodingType.UTF8 });
-                        if (await Sharing.isAvailableAsync()) {
-                            await Sharing.shareAsync(fileUri);
-                            showSuccess(t('export_success'));
-                        } else {
-                            Alert.alert('Saved', `File saved at: ${fileUri}`);
-                        }
-                    }
-                    closeExportModal();
-                } catch (e) {
-                    console.error('Share error:', e);
-                    setExportError(t('export_error_share'));
+                closeExportModal();
+                if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+                    window.alert(language === 'es' ? 'Cuenta exportada correctamente' : 'Account exported successfully');
+                } else {
+                    Alert.alert(
+                        language === 'es' ? 'Cuenta exportada' : 'Account exported',
+                        language === 'es' ? 'Tu cuenta fue exportada correctamente.' : 'Your account was exported successfully.'
+                    );
                 }
             } else {
                 setExportError(result.error);
             }
+        } finally {
             setIsExporting(false);
         }
     };
+
     const closeExportModal = () => {
         setShowExportModal(false);
         setExportStep('verify_session');
@@ -249,6 +209,45 @@ export default function ProfileScreen({ navigation }) {
         setFilePassword('');
         setFilePasswordConfirm('');
         setExportError('');
+    };
+
+    const confirmDeleteAccount = async () => {
+        setShowDeleteModal(false);
+        try {
+            if (!mongoUserId) {
+                throw new Error(language === 'es' ? 'No se encontró tu usuario en el servidor' : 'User record not found on server');
+            }
+
+            const response = await fetch(`${ENV.API_BASE_URL}/api/users/${mongoUserId}`, {
+                method: 'DELETE',
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || errorData.message || `HTTP ${response.status}`);
+            }
+
+            await disconnectWallet();
+            await clearLocalAccount();
+
+            const successMessage = language === 'es'
+                ? 'Tu cuenta fue borrada correctamente. Puedes crear o importar otra cuenta.'
+                : 'Your account was deleted successfully. You can now create or import another account.';
+            setDeleteSuccessMessage(successMessage);
+            setShowDeleteSuccessModal(true);
+        } catch (error) {
+            const errorTitle = language === 'es' ? 'Error' : 'Error';
+            const errorMessage = error.message || (language === 'es' ? 'No se pudo eliminar la cuenta' : 'Could not delete the account');
+            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+                window.alert(`${errorTitle}\n\n${errorMessage}`);
+            } else {
+                Alert.alert(errorTitle, errorMessage);
+            }
+        }
+    };
+
+    const handleDeleteAccount = () => {
+        setShowDeleteModal(true);
     };
     const toastStyle = useAnimatedStyle(() => ({
         opacity: toastOpacity.value,
@@ -580,6 +579,12 @@ export default function ProfileScreen({ navigation }) {
                         {t('profile_privacy_notice')}
                     </Text>
                 </Animated.View>
+                <ScalePressable onPress={handleDeleteAccount} style={styles.deleteAccountButton}>
+                    <Ionicons name="trash-outline" size={rs(18)} color="#fff" />
+                    <Text style={styles.deleteAccountText}>
+                        {language === 'es' ? 'Eliminar Cuenta' : 'Delete Account'}
+                    </Text>
+                </ScalePressable>
             </ScrollView>
             { }
             <Modal visible={showImagePicker} transparent animationType="slide">
@@ -703,6 +708,87 @@ export default function ProfileScreen({ navigation }) {
                 </View>
             </Modal>
             { }
+            <Modal visible={showDeleteModal} transparent animationType="fade" onRequestClose={() => setShowDeleteModal(false)}>
+                <View style={styles.deleteOverlay}>
+                    <View style={[styles.deleteCard, { backgroundColor: isDark ? '#2a0f12' : '#fff1f2', borderColor: isDark ? '#7f1d1d' : '#fecdd3' }]}>
+                        <ScalePressable
+                            onPress={() => setShowDeleteModal(false)}
+                            style={[styles.deleteCloseButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(127,29,29,0.08)' }]}
+                        >
+                            <Ionicons name="close" size={rs(18)} color="#dc2626" />
+                        </ScalePressable>
+                        <View style={styles.deleteIconWrap}>
+                            <LinearGradient
+                                colors={['#ef4444', '#b91c1c']}
+                                style={styles.deleteIconGradient}
+                            >
+                                <Ionicons name="warning" size={rs(28)} color="#fff" />
+                            </LinearGradient>
+                        </View>
+                        <Text style={[styles.deleteTitle, { color: isDark ? '#fecaca' : '#991b1b' }]}>
+                            {language === 'es' ? 'Eliminar Cuenta' : 'Delete Account'}
+                        </Text>
+                        <Text style={[styles.deleteMessage, { color: isDark ? '#fca5a5' : '#7f1d1d' }]}>
+                            {language === 'es'
+                                ? 'Esta acción es irreversible. Se borrarán para siempre tus datos, pero tus NFTs y tokens permanecerán en tu wallet de la red.'
+                                : 'This action is irreversible. Your MongoDB data will be deleted, but your NFTs and tokens will remain in your wallet on-chain.'}
+                        </Text>
+                        <View style={styles.deleteActions}>
+                            <ScalePressable
+                                onPress={() => setShowDeleteModal(false)}
+                                style={[styles.deleteActionButton, styles.deleteCancelButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#fee2e2' }]}
+                            >
+                                <Text style={[styles.deleteActionText, { color: isDark ? '#fca5a5' : '#7f1d1d' }]}>
+                                    {language === 'es' ? 'Cancelar' : 'Cancel'}
+                                </Text>
+                            </ScalePressable>
+                            <ScalePressable
+                                onPress={confirmDeleteAccount}
+                                style={[styles.deleteActionButton, styles.deleteConfirmButton]}
+                            >
+                                <Text style={styles.deleteActionText}>
+                                    {language === 'es' ? 'Eliminar Cuenta' : 'Delete Account'}
+                                </Text>
+                            </ScalePressable>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+            { }
+            { }
+            <Modal
+                visible={showDeleteSuccessModal}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowDeleteSuccessModal(false)}
+            >
+                <View style={styles.deleteSuccessOverlay}>
+                    <View style={[styles.deleteSuccessCard, { backgroundColor: isDark ? '#0f2618' : '#ecfdf5', borderColor: isDark ? '#166534' : '#bbf7d0' }]}>
+                        <ScalePressable
+                            onPress={() => setShowDeleteSuccessModal(false)}
+                            style={[styles.deleteSuccessCloseButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(22,101,52,0.08)' }]}
+                        >
+                            <Ionicons name="close" size={rs(18)} color="#16a34a" />
+                        </ScalePressable>
+                        <View style={styles.deleteSuccessIconWrap}>
+                            <LinearGradient colors={['#22c55e', '#15803d']} style={styles.deleteSuccessIconGradient}>
+                                <Ionicons name="checkmark" size={rs(28)} color="#fff" />
+                            </LinearGradient>
+                        </View>
+                        <Text style={[styles.deleteSuccessTitle, { color: isDark ? '#bbf7d0' : '#166534' }]}>
+                            {language === 'es' ? 'Cuenta eliminada' : 'Account deleted'}
+                        </Text>
+                        <Text style={[styles.deleteSuccessMessage, { color: isDark ? '#86efac' : '#166534' }]}>
+                            {deleteSuccessMessage}
+                        </Text>
+                        <ScalePressable onPress={() => setShowDeleteSuccessModal(false)} style={styles.deleteSuccessActionButton}>
+                            <Text style={styles.deleteSuccessActionText}>
+                                {language === 'es' ? 'Aceptar' : 'Accept'}
+                            </Text>
+                        </ScalePressable>
+                    </View>
+                </View>
+            </Modal>
             { }
             <CelebrationModal
                 visible={showCelebration}
@@ -909,6 +995,190 @@ const styles = StyleSheet.create({
         gap: SPACING.sm,
     },
     privacyText: { flex: 1, fontSize: rf(11), lineHeight: rf(16) },
+    deleteAccountButton: {
+        marginTop: SPACING.lg,
+        paddingVertical: SPACING.md,
+        borderRadius: RADIUS.lg,
+        backgroundColor: '#b91c1c',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: SPACING.sm,
+    },
+    deleteAccountText: {
+        color: '#fff',
+        fontSize: rf(15),
+        fontWeight: '800',
+    },
+    deleteOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.66)',
+        padding: SPACING.lg,
+    },
+    deleteCard: {
+        width: '100%',
+        maxWidth: rs(420),
+        borderRadius: RADIUS.xl,
+        borderWidth: 1,
+        padding: SPACING.xl,
+        paddingTop: SPACING.xxl,
+        alignItems: 'center',
+        position: 'relative',
+        shadowColor: '#b91c1c',
+        shadowOpacity: 0.35,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 12,
+    },
+    deleteCloseButton: {
+        position: 'absolute',
+        top: SPACING.md,
+        right: SPACING.md,
+        width: rs(34),
+        height: rs(34),
+        borderRadius: rs(17),
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 2,
+    },
+    deleteIconWrap: {
+        marginBottom: SPACING.md,
+    },
+    deleteIconGradient: {
+        width: rs(72),
+        height: rs(72),
+        borderRadius: rs(36),
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#ef4444',
+        shadowOpacity: 0.45,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 10,
+    },
+    deleteTitle: {
+        fontSize: rf(22),
+        fontWeight: '900',
+        textAlign: 'center',
+        marginBottom: SPACING.sm,
+    },
+    deleteMessage: {
+        fontSize: rf(14),
+        textAlign: 'center',
+        lineHeight: rf(22),
+        marginBottom: SPACING.xl,
+    },
+    deleteActions: {
+        flexDirection: 'row',
+        gap: SPACING.md,
+        width: '100%',
+    },
+    deleteActionButton: {
+        flex: 1,
+        minHeight: rs(48),
+        borderRadius: RADIUS.lg,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: SPACING.md,
+    },
+    deleteCancelButton: {
+        borderWidth: 1,
+        borderColor: 'rgba(127,29,29,0.18)',
+    },
+    deleteConfirmButton: {
+        backgroundColor: '#dc2626',
+        shadowColor: '#dc2626',
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 5 },
+        elevation: 6,
+    },
+    deleteActionText: {
+        color: '#fff',
+        fontSize: rf(14),
+        fontWeight: '800',
+    },
+    deleteSuccessOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        padding: SPACING.lg,
+    },
+    deleteSuccessCard: {
+        width: '100%',
+        maxWidth: rs(420),
+        borderRadius: RADIUS.xl,
+        borderWidth: 1,
+        padding: SPACING.xl,
+        paddingTop: SPACING.xxl,
+        alignItems: 'center',
+        position: 'relative',
+        shadowColor: '#16a34a',
+        shadowOpacity: 0.28,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 12,
+    },
+    deleteSuccessCloseButton: {
+        position: 'absolute',
+        top: SPACING.md,
+        right: SPACING.md,
+        width: rs(34),
+        height: rs(34),
+        borderRadius: rs(17),
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 2,
+    },
+    deleteSuccessIconWrap: {
+        marginBottom: SPACING.md,
+    },
+    deleteSuccessIconGradient: {
+        width: rs(72),
+        height: rs(72),
+        borderRadius: rs(36),
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#22c55e',
+        shadowOpacity: 0.4,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 10,
+    },
+    deleteSuccessTitle: {
+        fontSize: rf(22),
+        fontWeight: '900',
+        textAlign: 'center',
+        marginBottom: SPACING.sm,
+    },
+    deleteSuccessMessage: {
+        fontSize: rf(14),
+        textAlign: 'center',
+        lineHeight: rf(22),
+        marginBottom: SPACING.xl,
+    },
+    deleteSuccessActionButton: {
+        minHeight: rs(48),
+        borderRadius: RADIUS.lg,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: SPACING.xl,
+        backgroundColor: '#16a34a',
+        shadowColor: '#16a34a',
+        shadowOpacity: 0.28,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 5 },
+        elevation: 6,
+        alignSelf: 'stretch',
+    },
+    deleteSuccessActionText: {
+        color: '#fff',
+        fontSize: rf(14),
+        fontWeight: '800',
+    },
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.6)',

@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 from typing import Optional
 import logging
 from datetime import datetime
+from bson import ObjectId
+from bson.errors import InvalidId
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -38,8 +40,11 @@ OVER = int(os.getenv("OVER", "50"))   # 0-100
 # Importar conexión a MongoDB
 try:
     from database import db_connection
-    MONGODB_AVAILABLE = True
-    logger.info("✅ MongoDB connection module loaded")
+    MONGODB_AVAILABLE = getattr(db_connection, "is_available", False)
+    if MONGODB_AVAILABLE:
+        logger.info("✅ MongoDB connection module loaded")
+    else:
+        logger.warning("⚠️ MongoDB module loaded but database is unavailable")
 except ImportError:
     MONGODB_AVAILABLE = False
     logger.warning("⚠️ MongoDB module not available - reports won't be saved to database")
@@ -61,9 +66,14 @@ class ReportData(BaseModel):
     user_id: Optional[str] = Field(None, max_length=50)
     user_name: Optional[str] = Field("Anonymous", max_length=100)
 
+
+class ReportStatusUpdate(BaseModel):
+    status: str = Field(..., max_length=20)
+
 class UserBase(BaseModel):
     username: str = Field(..., max_length=60)
     email: Optional[str] = Field(None, max_length=100)
+    address: Optional[str] = Field(None, max_length=100)
     initials: Optional[str] = Field(None, max_length=10)
     avatar_url: Optional[str] = None
     tpl_title: Optional[str] = Field(None, max_length=100)
@@ -496,7 +506,7 @@ async def update_user(user_id: str, updates: dict):
         allowed_fields = {
             "avatar_url", "username", "email", "tpl_title", "points", "level",
             "total_scans", "bottle_scans", "can_scans", "plastic_scans", "has_changed_username",
-            "has_awarded_profile_visit", "initials"
+            "has_awarded_profile_visit", "initials", "address"
         }
         
         # Filtrar solo campos permitidos
@@ -504,6 +514,11 @@ async def update_user(user_id: str, updates: dict):
         
         if not filtered_updates:
             raise HTTPException(400, "No valid fields to update")
+
+        if "address" in filtered_updates and filtered_updates["address"]:
+            existing_address_user = db_connection.find_user_by_address(filtered_updates["address"])
+            if existing_address_user and existing_address_user.get("_id") != user_id:
+                raise HTTPException(409, "La address ya está asociada a otra cuenta")
 
         filtered_updates["updated_at"] = datetime.utcnow().isoformat()
         
@@ -526,6 +541,54 @@ async def update_user(user_id: str, updates: dict):
     except Exception as e:
         logger.error(f"❌ Error actualizando usuario: {str(e)}")
         raise HTTPException(500, f"Error al actualizar usuario: {str(e)}")
+
+
+@app.get("/api/users/address/{address}")
+async def get_user_by_address(address: str):
+    """Obtener un usuario por address de wallet."""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        user_doc = db_connection.find_user_by_address(address)
+        if not user_doc:
+            raise HTTPException(404, "Usuario no encontrado")
+
+        user_doc.pop("password_hash", None)
+        if "_id" in user_doc:
+            user_doc["_id"] = str(user_doc["_id"])
+
+        return {
+            "success": True,
+            "user": user_doc
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error consultando usuario por address: {str(e)}")
+        raise HTTPException(500, f"Error al consultar usuario por address: {str(e)}")
+
+
+@app.delete("/api/users/{user_id}")
+async def delete_user_by_id(user_id: str):
+    """Eliminar definitivamente una cuenta por id."""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        deleted = db_connection.delete_user_by_id(user_id)
+        if not deleted:
+            raise HTTPException(404, "Usuario no encontrado")
+
+        return {
+            "success": True,
+            "message": "Usuario eliminado correctamente"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error eliminando usuario por id: {str(e)}")
+        raise HTTPException(500, f"Error al eliminar usuario: {str(e)}")
 
 @app.get("/api/users/status/{user_id}")
 async def get_user_status(user_id: str):
@@ -735,7 +798,7 @@ async def save_report(report: ReportData):
         
         # Agregar metadata
         report_dict["saved_at"] = datetime.utcnow().isoformat()
-        report_dict["status"] = "pending"  # pending, validated, rejected
+        report_dict["status"] = "PENDING"
         
         # Guardar en MongoDB
         report_id = db_connection.insert_report(report_dict)
@@ -793,12 +856,12 @@ async def get_beach_reports(beach_name: str, limit: int = 50):
 
 
 @app.get("/api/reports")
-async def get_all_reports(limit: int = 100):
+async def get_all_reports(limit: Optional[int] = None):
     """
     Obtener todos los reportes del sistema
     
     Query params:
-    - limit: cantidad máxima de reportes a retornar (default: 100)
+    - limit: cantidad máxima de reportes a retornar. Si no se envía, retorna todos.
     """
     try:
         if not MONGODB_AVAILABLE:
@@ -823,6 +886,48 @@ async def get_all_reports(limit: int = 100):
     except Exception as e:
         logger.error(f"❌ Error obteniendo reportes: {str(e)}")
         raise HTTPException(500, f"Error al obtener reportes: {str(e)}")
+
+
+@app.patch("/api/reports/{report_id}/status")
+async def update_report_status(report_id: str, payload: ReportStatusUpdate):
+    """
+    Actualizar el estado de un reporte.
+    Estados válidos: PENDING, CONFIRMED, DENIED.
+    """
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        normalized_status = payload.status.strip().upper()
+        if normalized_status not in {"PENDING", "CONFIRMED", "DENIED"}:
+            raise HTTPException(400, "Estado de reporte inválido")
+
+        collection = db_connection.get_collection()
+        try:
+            object_id = ObjectId(report_id)
+        except InvalidId:
+            raise HTTPException(400, "ID de reporte inválido")
+
+        result = collection.update_one(
+            {"_id": object_id},
+            {"$set": {"status": normalized_status, "reviewed_at": datetime.utcnow().isoformat()}}
+        )
+
+        if result.matched_count == 0:
+            raise HTTPException(404, "Reporte no encontrado")
+
+        logger.info(f"✅ Reporte {report_id} actualizado a {normalized_status}")
+        return {
+            "success": True,
+            "report_id": report_id,
+            "status": normalized_status,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error actualizando estado del reporte: {str(e)}")
+        raise HTTPException(500, f"Error actualizando reporte: {str(e)}")
 
 
 @app.get("/api/beaches")

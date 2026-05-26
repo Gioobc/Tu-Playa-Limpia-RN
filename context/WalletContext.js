@@ -1,9 +1,11 @@
 import { createContext, useContext, useState } from "react"
 import { ethers } from "ethers"
-import { Platform, DeviceEventEmitter } from "react-native"
+import { Platform, DeviceEventEmitter, Alert } from "react-native"
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import EthereumProvider from "@walletconnect/ethereum-provider"
 import { useEffect } from "react"
+import { useAuth } from './AuthContext'
+import ENV from '../constants/env'
 
 const WalletContext = createContext()
 
@@ -21,6 +23,7 @@ const NETWORK = {
 }
 
 export function WalletProvider({ children }) {
+  const { mongoUserId, hydrateSessionFromUser } = useAuth()
 
   const [provider, setProvider] = useState(null)
   const [signer, setSigner] = useState(null)
@@ -75,6 +78,79 @@ export function WalletProvider({ children }) {
     } catch (e) {
       console.warn("Error syncing wallet with storage:", e);
     }
+  }
+
+  const setWalletConnectedType = async (walletType) => {
+    setConnectedWalletType(walletType)
+    await AsyncStorage.setItem('@tpl_connected_wallet_type', walletType)
+  }
+
+  const resolveWalletOwner = async (walletAddress) => {
+    const apiUrl = ENV.API_BASE_URL
+    const response = await fetch(`${apiUrl}/api/users/address/${encodeURIComponent(walletAddress)}`)
+    if (response.status === 404) return null
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.detail || errorData.message || `HTTP ${response.status}`)
+    }
+    const data = await response.json()
+    return data.user || null
+  }
+
+  const persistWalletAddress = async (walletAddress) => {
+    if (!mongoUserId) return
+    const apiUrl = ENV.API_BASE_URL
+    const response = await fetch(`${apiUrl}/api/users/${mongoUserId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: walletAddress })
+    })
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.detail || errorData.message || `HTTP ${response.status}`)
+    }
+    return response.json()
+  }
+
+  const askToUseExistingAccount = (existingUser) => new Promise((resolve) => {
+    Alert.alert(
+      'Address ya vinculada',
+      `Esta address ya está asociada a la cuenta de ${existingUser.username}. Si continúas, se abrirá esa cuenta.`,
+      [
+        { text: 'Cancelar', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Vincular a esa cuenta', onPress: () => resolve(true) },
+      ],
+      { cancelable: false }
+    )
+  })
+
+  const finalizeWalletConnection = async ({ walletAddress, walletType, ethersProvider, walletSigner }) => {
+    const existingOwner = await resolveWalletOwner(walletAddress)
+
+    if (existingOwner && existingOwner._id && existingOwner._id !== mongoUserId) {
+      const shouldSwitch = await askToUseExistingAccount(existingOwner)
+      if (!shouldSwitch) {
+        await disconnectWallet()
+        setHasSkippedConnection(true)
+        return false
+      }
+
+      await setWalletConnectedType(walletType)
+      setProvider(ethersProvider)
+      setSigner(walletSigner)
+      setAddress(walletAddress)
+      await hydrateSessionFromUser(existingOwner, walletAddress)
+      await syncWalletWithApp(walletAddress)
+      return true
+    }
+
+    await persistWalletAddress(walletAddress)
+    await setWalletConnectedType(walletType)
+    setProvider(ethersProvider)
+    setSigner(walletSigner)
+    setAddress(walletAddress)
+    await syncWalletWithApp(walletAddress)
+    return true
   }
 
   // --------------------------------------------------
@@ -154,14 +230,15 @@ export function WalletProvider({ children }) {
       const signer = await ethersProvider.getSigner()
       const address = await signer.getAddress()
 
-      setProvider(ethersProvider)
-      setSigner(signer)
-      setAddress(address)
-      setConnectedWalletType('metamask')
-      await AsyncStorage.setItem('@tpl_connected_wallet_type', 'metamask');
-
-      await syncWalletWithApp(address)
-      console.log("🦊 MetaMask conectado:", address)
+      const connected = await finalizeWalletConnection({
+        walletAddress: address,
+        walletType: 'metamask',
+        ethersProvider,
+        walletSigner: signer,
+      })
+      if (connected) {
+        console.log("🦊 MetaMask conectado:", address)
+      }
 
     } catch (err) {
       console.log("MetaMask connection error:", err)
@@ -194,14 +271,15 @@ export function WalletProvider({ children }) {
       const signer = ethersProvider.getSigner ? await ethersProvider.getSigner() : await ethersProvider.getSigner();
       const address = signer.getAddress ? await signer.getAddress() : await signer.address;
 
-      setProvider(ethersProvider)
-      setSigner(signer)
-      setAddress(address)
-      setConnectedWalletType('metamask')
-      await AsyncStorage.setItem('@tpl_connected_wallet_type', 'metamask');
-
-      await syncWalletWithApp(address)
-      console.log("📱 WalletConnect conectado:", address)
+      const connected = await finalizeWalletConnection({
+        walletAddress: address,
+        walletType: 'walletconnect',
+        ethersProvider,
+        walletSigner: signer,
+      })
+      if (connected) {
+        console.log("📱 WalletConnect conectado:", address)
+      }
 
     } catch (err) {
       console.log("WalletConnect error:", err)
@@ -244,14 +322,15 @@ export function WalletProvider({ children }) {
       const signer = ethersProvider.getSigner ? await ethersProvider.getSigner() : await ethersProvider.getSigner();
       const address = signer.getAddress ? await signer.getAddress() : await signer.address;
 
-      setProvider(ethersProvider);
-      setSigner(signer);
-      setAddress(address);
-      setConnectedWalletType('pali');
-      await AsyncStorage.setItem('@tpl_connected_wallet_type', 'pali');
-
-      await syncWalletWithApp(address);
-      console.log("🟢 Pali Wallet conectado:", address);
+      const connected = await finalizeWalletConnection({
+        walletAddress: address,
+        walletType: 'pali',
+        ethersProvider,
+        walletSigner: signer,
+      })
+      if (connected) {
+        console.log("🟢 Pali Wallet conectado:", address);
+      }
 
     } catch (err) {
       console.log("Pali connection error:", err);

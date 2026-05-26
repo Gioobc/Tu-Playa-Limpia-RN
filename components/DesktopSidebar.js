@@ -64,21 +64,25 @@ const SidebarItem = ({ icon, label, routeName, isActive, onPress, index }) => {
         </Animated.View>
     );
 };
-export default function DesktopSidebar() {
+export default function DesktopSidebar({ isAdmin = false }) {
     const { colors, isDark } = useTheme();
     const { user, level } = useGame();
     const { t, language } = useLanguage();
     const navigation = useNavigation();
 
-    const navItems = [
-        { label: t('sidebar_home'), icon: 'home', route: 'Inicio' },
-        { label: t('sidebar_map'), icon: 'map', route: 'Mapa' },
-        { label: t('sidebar_scan'), icon: 'scan', route: 'Escanear' },
-        { label: t('sidebar_rewards'), icon: 'trophy', route: 'Premios' },
-        { label: t('sidebar_promos'), icon: 'gift', route: 'Promos', locked: level < 2 },
-        { label: language === 'es' ? 'Reportes' : 'Reports', icon: 'flag', route: 'Reports' },
-        { label: language === 'es' ? 'Estado de Reportes' : 'Report Status', icon: 'checkbox', route: 'ReportStatus' },
-    ];
+    const navItems = isAdmin
+        ? [
+            { label: language === 'es' ? 'Menú principal' : 'Main menu', icon: 'shield', route: 'Reports' },
+            { label: language === 'es' ? 'Reportes' : 'Reports', icon: 'document-text', route: 'ReportStatus' },
+        ]
+        : [
+            { label: t('sidebar_home'), icon: 'home', route: 'Inicio' },
+            { label: t('sidebar_map'), icon: 'map', route: 'Mapa' },
+            { label: t('sidebar_scan'), icon: 'scan', route: 'Escanear' },
+            { label: t('sidebar_rewards'), icon: 'trophy', route: 'Premios' },
+            { label: t('sidebar_promos'), icon: 'gift', route: 'Promos', locked: level < 2 },
+            { label: language === 'es' ? 'Estado de Reportes' : 'Report Status', icon: 'checkbox', route: 'ReportStatus' },
+        ];
 
     const activeRoute = useNavigationState(state => {
         if (!state) return 'Inicio';
@@ -199,9 +203,11 @@ export default function DesktopSidebar() {
                         onPress={() => navigation.navigate('Profile')}
                     >
                         <View style={styles.iconContainer}>
-                            <Ionicons name="settings-outline" size={rs(20)} color={colors.textSecondary} />
+                            <Ionicons name={isAdmin ? 'person-outline' : 'settings-outline'} size={rs(20)} color={colors.textSecondary} />
                         </View>
-                        <Text style={[styles.itemLabel, { color: colors.textSecondary }]} numberOfLines={1}>{t('sidebar_settings')}</Text>
+                        <Text style={[styles.itemLabel, { color: colors.textSecondary }]} numberOfLines={1}>
+                            {isAdmin ? (language === 'es' ? 'Perfil' : 'Profile') : t('sidebar_settings')}
+                        </Text>
                     </Pressable>
                     <Text style={[styles.versionText, { color: colors.textMuted }]} numberOfLines={1}>{t('sidebar_version')}</Text>
                 </View>

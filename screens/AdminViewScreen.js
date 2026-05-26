@@ -8,7 +8,6 @@ import {
     Platform,
     useWindowDimensions,
     ActivityIndicator,
-    Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +15,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
-import { useWallet } from '../context/WalletContext';
 import { rs, rf, rh, SPACING, RADIUS } from '../constants/responsive';
 import { BRAND, GRADIENTS } from '../constants/theme';
 import GlassCard from '../components/premium/GlassCard';
@@ -58,7 +56,6 @@ export default function AdminViewScreen() {
     const { colors, isDark } = useTheme();
     const { language } = useLanguage();
     const { width } = useWindowDimensions();
-    const { address: walletAddress, connectMetaMask, connectPali } = useWallet();
     const isLight = !isDark;
     const isDesktop = width >= 1024;
 
@@ -385,45 +382,6 @@ export default function AdminViewScreen() {
                             </TouchableOpacity>
                         </View>
                     </Animated.View>
-
-                    {/* Wallet connection prompt if no wallet is connected */}
-                    {!walletAddress && (
-                        <Animated.View entering={FadeInDown.delay(50).springify()} style={styles.walletAlertWrapper}>
-                            <GlassCard variant="elevated" style={styles.walletAlertCard}>
-                                <View style={styles.walletAlertHeader}>
-                                    <View style={styles.walletAlertIconContainer}>
-                                        <Ionicons name="wallet-outline" size={rs(24)} color="#e11d48" />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={[styles.walletAlertTitle, { color: colors.text }]}>
-                                            {language === 'es' ? "Conexión de Billetera Requerida" : "Wallet Connection Required"}
-                                        </Text>
-                                        <Text style={[styles.walletAlertDesc, { color: colors.textSecondary }]}>
-                                            {language === 'es' 
-                                                ? "Como administrador, necesitas conectar tu wallet para autorizar el minado de certificados ecológicos y la distribución de recompensas en zkTanenbaum." 
-                                                : "As an administrator, you need to connect your wallet to authorize environmental certificate minting and rewards distribution on zkTanenbaum."}
-                                        </Text>
-                                    </View>
-                                </View>
-                                <View style={styles.walletAlertButtons}>
-                                    <TouchableOpacity 
-                                        style={[styles.walletAlertBtn, { backgroundColor: isLight ? '#cbd5e1' : 'rgba(255,255,255,0.05)', borderColor: colors.border }]}
-                                        onPress={connectPali}
-                                    >
-                                        <Image source={require('../assets/logo-pali.png')} style={styles.walletAlertBtnLogo} resizeMode="contain" />
-                                        <Text style={[styles.walletAlertBtnText, { color: colors.text }]}>Conectar Pali</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity 
-                                        style={[styles.walletAlertBtn, { backgroundColor: isLight ? '#cbd5e1' : 'rgba(255,255,255,0.05)', borderColor: colors.border }]}
-                                        onPress={connectMetaMask}
-                                    >
-                                        <Image source={require('../assets/logo-metamask.png')} style={styles.walletAlertBtnLogo} resizeMode="contain" />
-                                        <Text style={[styles.walletAlertBtnText, { color: colors.text }]}>Conectar MetaMask</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </GlassCard>
-                        </Animated.View>
-                    )}
 
                     {/* Stats Grid */}
                     <View style={[styles.statsGrid, { flexDirection: isDesktop ? 'row' : 'column' }]}>

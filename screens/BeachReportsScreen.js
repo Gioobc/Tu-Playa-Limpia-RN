@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, ActivityIndicator, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import { rs, rf, rh, rw, SPACING, RADIUS } from '../constants/responsive';
 import ENV from '../constants/env';
+import ScalePressable from '../components/ScalePressable';
 
 // Base URL for API - fallback to localhost if not set
 const API_URL = ENV.API_BASE_URL;
@@ -15,12 +18,44 @@ const API_URL = ENV.API_BASE_URL;
 export default function BeachReportsScreen({ route, navigation }) {
     const { beach } = route.params || {};
     const { colors, isDark } = useTheme();
+    const { language } = useLanguage();
+    const { isAdmin } = useAuth();
     const [cleanupHistory, setCleanupHistory] = useState([]);
     const [userReports, setUserReports] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selectedReport, setSelectedReport] = useState(null);
+    const [updatingReport, setUpdatingReport] = useState(false);
 
     const textColor = isDark ? colors.text : "#0B3B60"; // Deep blue from mockup
     const subTextColor = isDark ? colors.textMuted : "#64748B";
+
+    const getStatusLabel = (status) => {
+        const normalized = (status || '').toUpperCase();
+        if (normalized === 'CONFIRMED') return language === 'es' ? 'CONFIRMADO' : 'CONFIRMED';
+        if (normalized === 'DENIED') return language === 'es' ? 'DENEGADO' : 'DENIED';
+        return language === 'es' ? 'PENDIENTE' : 'PENDING';
+    };
+
+    const getStatusStyle = (status) => {
+        const normalized = (status || '').toUpperCase();
+        if (normalized === 'CONFIRMED') return { backgroundColor: '#D1FAE5', color: '#059669' };
+        if (normalized === 'DENIED') return { backgroundColor: '#FEE2E2', color: '#DC2626' };
+        return { backgroundColor: '#FEF3C7', color: '#D97706' };
+    };
+
+    const getReportTypeLabel = (type) => {
+        const normalized = (type || '').toLowerCase();
+        const map = {
+            general: language === 'es' ? 'General' : 'General',
+            state: language === 'es' ? 'Estado de Playa' : 'Beach State',
+            trash: language === 'es' ? 'Basura Anormal' : 'Large Waste',
+            animal: language === 'es' ? 'Animal Muerto' : 'Dead Animal',
+        };
+        return map[normalized] || (type ? type.toUpperCase() : (language === 'es' ? 'REPORTE' : 'REPORT'));
+    };
+
+    const isGlobalAdminView = !beach;
+    const canReviewReports = isAdmin || isGlobalAdminView;
 
     useEffect(() => {
         fetchData();
@@ -50,19 +85,26 @@ export default function BeachReportsScreen({ route, navigation }) {
                 setCleanupHistory(history);
             }
 
-            // Fetch Reports for this beach
-            const reportsResp = await fetch(`${API_URL}/api/reports/beach/${encodeURIComponent(beachName)}`);
+            // Fetch reports: all reports for admin/global view, beach-only for location view
+            const reportsUrl = isGlobalAdminView
+                ? `${API_URL}/api/reports`
+                : `${API_URL}/api/reports/beach/${encodeURIComponent(beachName)}`;
+            const reportsResp = await fetch(reportsUrl);
             const reportsData = await reportsResp.json();
             
             if (reportsData.success) {
                 const reports = reportsData.reports.map(r => ({
                     id: r._id,
-                    title: r.report_type?.toUpperCase() || 'REPORTE',
-                    details: r.details || r.msg || 'Sin detalles',
+                    title: getReportTypeLabel(r.report_type),
+                    details: r.msg || r.details || 'Sin detalles',
                     userName: r.user_name || 'Anónimo',
                     image: r.image_uri ? { uri: r.image_uri } : null,
-                    status: r.status === 'pending' ? 'PENDIENTE' : 'VALIDADO',
-                    timeAgo: r.saved_at ? new Date(r.saved_at).toLocaleDateString() : 'Hace poco'
+                    status: (r.status || 'PENDING').toUpperCase(),
+                    timeAgo: r.saved_at ? new Date(r.saved_at).toLocaleDateString() : 'Hace poco',
+                    beachName: r.beach_name || beachName,
+                    reportType: r.report_type || 'general',
+                    location: r.location || {},
+                    sector: r.location?.sector || r.sector || 'General',
                 }));
                 setUserReports(reports);
             }
@@ -76,6 +118,42 @@ export default function BeachReportsScreen({ route, navigation }) {
     const handleBack = () => {
         if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         navigation.goBack();
+    };
+
+    const handleOpenReport = (report) => {
+        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setSelectedReport(report);
+    };
+
+    const handleUpdateReportStatus = async (newStatus) => {
+        if (!selectedReport || updatingReport) return;
+        setUpdatingReport(true);
+        try {
+            const response = await fetch(`${API_URL}/api/reports/${selectedReport.id}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus }),
+            });
+
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.detail || data.message || `HTTP ${response.status}`);
+            }
+
+            setUserReports(prev => prev.map(report => (
+                report.id === selectedReport.id ? { ...report, status: newStatus } : report
+            )));
+            setSelectedReport(prev => prev ? { ...prev, status: newStatus } : prev);
+        } catch (error) {
+            console.error('Error updating report status:', error);
+            if (Platform.OS === 'web') {
+                alert(error.message || 'No se pudo actualizar el reporte');
+            } else {
+                Alert.alert(language === 'es' ? 'Error' : 'Error', error.message || (language === 'es' ? 'No se pudo actualizar el reporte' : 'Could not update the report'));
+            }
+        } finally {
+            setUpdatingReport(false);
+        }
     };
 
     const renderTimelineNode = (item, isLast) => (
@@ -113,8 +191,21 @@ export default function BeachReportsScreen({ route, navigation }) {
         </View>
     );
 
-    const renderReportCard = (report) => (
-        <View key={report.id} style={[styles.reportCard, { backgroundColor: isDark ? colors.card : '#fff' }]}>
+    const renderReportCard = (report) => {
+        const statusStyle = getStatusStyle(report.status);
+        const CardComponent = canReviewReports ? TouchableOpacity : View;
+        const cardProps = canReviewReports
+            ? {
+                activeOpacity: 0.85,
+                onPress: () => handleOpenReport(report),
+            }
+            : {};
+        return (
+        <CardComponent
+            key={report.id}
+            {...cardProps}
+            style={[styles.reportCard, { backgroundColor: isDark ? colors.card : '#fff' }]}
+        >
             {report.image ? (
                 <Image source={report.image} style={styles.reportImage} />
             ) : (
@@ -125,8 +216,8 @@ export default function BeachReportsScreen({ route, navigation }) {
             
             <View style={styles.reportContent}>
                 <View style={styles.reportHeader}>
-                    <View style={[styles.statusBadge, report.status === 'VALIDADO' && { backgroundColor: '#D1FAE5' }]}>
-                        <Text style={[styles.statusText, report.status === 'VALIDADO' && { color: '#059669' }]}>{report.status}</Text>
+                    <View style={[styles.statusBadge, { backgroundColor: statusStyle.backgroundColor }]}>
+                        <Text style={[styles.statusText, { color: statusStyle.color }]}>{getStatusLabel(report.status)}</Text>
                     </View>
                     <Text style={[styles.timeAgo, { color: subTextColor }]}>{report.timeAgo}</Text>
                 </View>
@@ -139,8 +230,11 @@ export default function BeachReportsScreen({ route, navigation }) {
                     {report.details}
                 </Text>
             </View>
-        </View>
-    );
+        </CardComponent>
+        );
+    };
+
+    const selectedStatusStyle = selectedReport ? getStatusStyle(selectedReport.status) : getStatusStyle('PENDING');
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.background : '#F8FAFC' }]} edges={['top']}>
@@ -198,7 +292,11 @@ export default function BeachReportsScreen({ route, navigation }) {
                     <View style={styles.sectionHeader}>
                         <View style={styles.sectionTitleRow}>
                             <View style={styles.sectionTitleAccent} />
-                            <Text style={[styles.sectionTitle, { color: textColor }]}>Revisión de Reportes de Usuario</Text>
+                            <Text style={[styles.sectionTitle, { color: textColor }]}>
+                                {isGlobalAdminView
+                                    ? (language === 'es' ? 'Revisión de Todos los Reportes' : 'Review All Reports')
+                                    : (language === 'es' ? 'Revisión de Reportes de Usuario' : 'User Report Review')}
+                            </Text>
                         </View>
                     </View>
 
@@ -218,6 +316,98 @@ export default function BeachReportsScreen({ route, navigation }) {
                         </View>
                     )}
                 </View>
+
+                    {canReviewReports ? (
+                    <Modal
+                        visible={!!selectedReport}
+                        transparent
+                        animationType="fade"
+                        onRequestClose={() => setSelectedReport(null)}
+                    >
+                        <View style={styles.detailOverlay}>
+                            <View style={[styles.detailCard, { backgroundColor: isDark ? colors.card : '#ffffff', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#e2e8f0' }]}>
+                                <ScalePressable onPress={() => setSelectedReport(null)} style={styles.detailCloseButton}>
+                                    <Ionicons name="close" size={rs(20)} color={colors.textMuted} />
+                                </ScalePressable>
+
+                                <View style={styles.detailHeader}>
+                                    <View style={[styles.detailBadge, { backgroundColor: selectedStatusStyle.backgroundColor }]}>
+                                        <Text style={[styles.detailBadgeText, { color: selectedStatusStyle.color }]}>
+                                            {getStatusLabel(selectedReport?.status)}
+                                        </Text>
+                                    </View>
+                                    <Text style={[styles.detailTitle, { color: textColor }]} numberOfLines={2}>
+                                        {selectedReport?.title} - {selectedReport?.userName}
+                                    </Text>
+                                    <Text style={[styles.detailSubtitle, { color: subTextColor }]}>
+                                        {selectedReport?.timeAgo} • {selectedReport?.beachName}
+                                    </Text>
+                                </View>
+
+                                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailScrollContent}>
+                                    {selectedReport?.image ? (
+                                        <Image source={selectedReport.image} style={styles.detailImage} />
+                                    ) : (
+                                        <View style={[styles.detailImagePlaceholder, { backgroundColor: isDark ? colors.background : '#F8FAFC' }]}>
+                                            <Ionicons name="image-outline" size={rs(42)} color={subTextColor} />
+                                        </View>
+                                    )}
+
+                                    <View style={styles.detailMetaGrid}>
+                                        <View style={[styles.detailMetaCard, { backgroundColor: isDark ? colors.background : '#F8FAFC' }]}>
+                                            <Text style={[styles.detailMetaLabel, { color: subTextColor }]}>{language === 'es' ? 'Playa' : 'Beach'}</Text>
+                                            <Text style={[styles.detailMetaValue, { color: textColor }]}>{selectedReport?.beachName}</Text>
+                                        </View>
+                                        <View style={[styles.detailMetaCard, { backgroundColor: isDark ? colors.background : '#F8FAFC' }]}>
+                                            <Text style={[styles.detailMetaLabel, { color: subTextColor }]}>{language === 'es' ? 'Tipo' : 'Type'}</Text>
+                                            <Text style={[styles.detailMetaValue, { color: textColor }]}>{selectedReport?.title}</Text>
+                                        </View>
+                                    </View>
+
+                                    <View style={[styles.detailSection, { backgroundColor: isDark ? colors.background : '#F8FAFC' }]}>
+                                        <Text style={[styles.detailSectionLabel, { color: subTextColor }]}>{language === 'es' ? 'Descripción' : 'Description'}</Text>
+                                        <Text style={[styles.detailDescription, { color: textColor }]}>{selectedReport?.details}</Text>
+                                    </View>
+
+                                    <View style={[styles.detailSection, { backgroundColor: isDark ? colors.background : '#F8FAFC' }]}>
+                                        <Text style={[styles.detailSectionLabel, { color: subTextColor }]}>{language === 'es' ? 'Ubicación reportada' : 'Reported location'}</Text>
+                                        <Text style={[styles.detailDescription, { color: textColor }]}>
+                                            {selectedReport?.location?.sector || (language === 'es' ? 'Sector general' : 'General sector')}
+                                        </Text>
+                                        <Text style={[styles.detailTiny, { color: subTextColor }]}>
+                                            {selectedReport?.location?.lat ? `Lat: ${selectedReport.location.lat}` : ''}
+                                            {selectedReport?.location?.lng ? `  •  Lng: ${selectedReport.location.lng}` : ''}
+                                        </Text>
+                                    </View>
+
+                                    <View style={[styles.detailSection, { backgroundColor: isDark ? colors.background : '#F8FAFC' }]}>
+                                        <Text style={[styles.detailSectionLabel, { color: subTextColor }]}>{language === 'es' ? 'Detalle del usuario' : 'User details'}</Text>
+                                        <Text style={[styles.detailTiny, { color: textColor }]}>{selectedReport?.userName}</Text>
+                                    </View>
+                                </ScrollView>
+
+                                <View style={styles.detailActions}>
+                                    <TouchableOpacity
+                                        disabled={updatingReport}
+                                        onPress={() => handleUpdateReportStatus('CONFIRMED')}
+                                        style={[styles.detailActionButton, styles.confirmButton, updatingReport && { opacity: 0.7 }]}
+                                    >
+                                        <Ionicons name="checkmark-circle-outline" size={rs(18)} color="#fff" />
+                                        <Text style={styles.detailActionText}>{language === 'es' ? 'Confirmar Reporte' : 'Confirm Report'}</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        disabled={updatingReport}
+                                        onPress={() => handleUpdateReportStatus('DENIED')}
+                                        style={[styles.detailActionButton, styles.denyButton, updatingReport && { opacity: 0.7 }]}
+                                    >
+                                        <Ionicons name="close-circle-outline" size={rs(18)} color="#fff" />
+                                        <Text style={styles.detailActionText}>{language === 'es' ? 'Denegar Reporte' : 'Deny Report'}</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        </View>
+                    </Modal>
+                    ) : null}
 
                 <View style={{ height: rs(80) }} />
             </ScrollView>
@@ -459,6 +649,136 @@ const styles = StyleSheet.create({
     },
     reportDetails: {
         fontSize: rf(12),
+    },
+    detailOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: SPACING.lg,
+    },
+    detailCard: {
+        width: '100%',
+        maxWidth: rs(720),
+        maxHeight: '92%',
+        borderRadius: RADIUS.xl,
+        borderWidth: 1,
+        padding: SPACING.lg,
+        position: 'relative',
+    },
+    detailCloseButton: {
+        position: 'absolute',
+        top: SPACING.md,
+        right: SPACING.md,
+        zIndex: 2,
+        padding: SPACING.xs,
+    },
+    detailHeader: {
+        paddingRight: rs(36),
+        marginBottom: SPACING.md,
+    },
+    detailBadge: {
+        alignSelf: 'flex-start',
+        paddingHorizontal: rs(10),
+        paddingVertical: rs(4),
+        borderRadius: RADIUS.full,
+        marginBottom: SPACING.sm,
+    },
+    detailBadgeText: {
+        fontSize: rf(11),
+        fontWeight: '800',
+        letterSpacing: 0.5,
+    },
+    detailTitle: {
+        fontSize: rf(20),
+        fontWeight: '800',
+        marginBottom: rs(4),
+    },
+    detailSubtitle: {
+        fontSize: rf(12),
+        fontWeight: '600',
+    },
+    detailScrollContent: {
+        paddingBottom: SPACING.md,
+    },
+    detailImage: {
+        width: '100%',
+        height: rs(220),
+        borderRadius: RADIUS.xl,
+        marginBottom: SPACING.md,
+    },
+    detailImagePlaceholder: {
+        width: '100%',
+        height: rs(220),
+        borderRadius: RADIUS.xl,
+        marginBottom: SPACING.md,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    detailMetaGrid: {
+        flexDirection: 'row',
+        gap: SPACING.sm,
+        marginBottom: SPACING.md,
+    },
+    detailMetaCard: {
+        flex: 1,
+        padding: SPACING.md,
+        borderRadius: RADIUS.lg,
+    },
+    detailMetaLabel: {
+        fontSize: rf(11),
+        fontWeight: '700',
+        marginBottom: rs(4),
+        textTransform: 'uppercase',
+    },
+    detailMetaValue: {
+        fontSize: rf(14),
+        fontWeight: '800',
+    },
+    detailSection: {
+        padding: SPACING.md,
+        borderRadius: RADIUS.lg,
+        marginBottom: SPACING.sm,
+    },
+    detailSectionLabel: {
+        fontSize: rf(11),
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        marginBottom: rs(6),
+    },
+    detailDescription: {
+        fontSize: rf(14),
+        lineHeight: rf(21),
+        fontWeight: '500',
+    },
+    detailTiny: {
+        fontSize: rf(11),
+        marginTop: rs(6),
+    },
+    detailActions: {
+        flexDirection: 'row',
+        gap: SPACING.sm,
+        marginTop: SPACING.sm,
+    },
+    detailActionButton: {
+        flex: 1,
+        minHeight: rs(48),
+        borderRadius: RADIUS.lg,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: rs(6),
+    },
+    confirmButton: {
+        backgroundColor: '#16a34a',
+    },
+    denyButton: {
+        backgroundColor: '#dc2626',
+    },
+    detailActionText: {
+        color: '#fff',
+        fontSize: rf(13),
+        fontWeight: '800',
     },
     emptyState: {
         alignItems: 'center',

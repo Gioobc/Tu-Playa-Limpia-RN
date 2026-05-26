@@ -39,7 +39,7 @@ const linking = {
 
 function AppContent() {
   const { isDark } = useTheme();
-  const { isAuthenticated, isLoading, isFirstTime, register, login, importAccount, username } = useAuth();
+  const { isAuthenticated, isLoading, isFirstTime, register, login, importAccount, username, isAdmin } = useAuth();
   const [fontsLoaded] = useFonts({
     ...Ionicons.font,
     ...MaterialCommunityIcons.font,
@@ -74,6 +74,7 @@ function AppContent() {
           onLogin={login}
           onImport={importAccount}
           username={username}
+          isAdmin={isAdmin}
         />
         <StatusBar style={isDark ? 'light' : 'dark'} />
       </NavigationContainer>

@@ -18,6 +18,7 @@ class MongoDBConnection:
     _instance = None
     _client = None
     _db = None
+    _available = False
 
     def __new__(cls):
         if cls._instance is None:
@@ -41,11 +42,14 @@ class MongoDBConnection:
             # Test connection
             self._client.admin.command('ping')
             self._db = self._client[DATABASE_NAME]
+            self._available = True
             logger.info(f"✅ Conectado a MongoDB - DB: {DATABASE_NAME}")
             self._create_indexes()
         except (ConnectionFailure, ServerSelectionTimeoutError) as e:
             logger.error(f"❌ Error conexión MongoDB: {e}")
-            raise
+            self._available = False
+            self._client = None
+            self._db = None
 
     def _create_indexes(self):
         """Crear índices para optimizar queries"""
@@ -70,6 +74,7 @@ class MongoDBConnection:
         try:
             user_collection = self._client[USER_DATABASE_NAME][USER_COLLECTION]
             user_collection.create_index("username", unique=True)
+            user_collection.create_index("address", unique=True, sparse=True)
             user_collection.create_index("join_date")
             logger.info("📊 Índices de MongoDB para usuarios creados exitosamente")
         except Exception as e:
@@ -79,7 +84,13 @@ class MongoDBConnection:
         """Obtener instancia de la base de datos"""
         if self._db is None:
             self.connect()
+        if self._db is None:
+            raise ConnectionFailure("MongoDB no disponible")
         return self._db
+
+    @property
+    def is_available(self):
+        return self._available and self._db is not None and self._client is not None
 
     def get_collection(self, collection_name=REPORTS_COLLECTION):
         """Obtener colección de reportes u otra colección en la DB principal"""
@@ -149,6 +160,15 @@ class MongoDBConnection:
             logger.error(f"❌ Error buscando usuario por email: {e}")
             return None
 
+    def find_user_by_address(self, address: str):
+        """Buscar usuario por address de wallet"""
+        try:
+            collection = self.get_user_collection()
+            return collection.find_one({"address": address})
+        except Exception as e:
+            logger.error(f"❌ Error buscando usuario por address: {e}")
+            return None
+
     def delete_user_by_email(self, email: str) -> bool:
         """Eliminar usuario por correo electrónico"""
         try:
@@ -158,6 +178,17 @@ class MongoDBConnection:
             return result.deleted_count > 0
         except Exception as e:
             logger.error(f"❌ Error eliminando usuario por email: {e}")
+            raise
+
+    def delete_user_by_id(self, user_id: str) -> bool:
+        """Eliminar usuario por id"""
+        try:
+            collection = self.get_user_collection()
+            result = collection.delete_one({"_id": user_id})
+            logger.info(f"🗑️ Usuario con id {user_id} eliminado: {result.deleted_count} documentos")
+            return result.deleted_count > 0
+        except Exception as e:
+            logger.error(f"❌ Error eliminando usuario por id: {e}")
             raise
 
     def update_user(self, user_id: str, update_data: dict):
@@ -198,15 +229,14 @@ class MongoDBConnection:
             logger.error(f"❌ Error obteniendo reportes: {e}")
             return []
 
-    def get_all_reports(self, limit: int = 100):
+    def get_all_reports(self, limit: int | None = 100):
         """Obtener todos los reportes"""
         try:
             collection = self.get_collection()
-            reports = list(collection.find(
-                {},
-                sort=[("timestamp", -1)],
-                limit=limit
-            ))
+            query = collection.find({}, sort=[("timestamp", -1)])
+            if limit is not None:
+                query = query.limit(limit)
+            reports = list(query)
             return reports
         except Exception as e:
             logger.error(f"❌ Error obteniendo reportes: {e}")

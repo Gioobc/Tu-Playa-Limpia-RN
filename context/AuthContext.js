@@ -7,6 +7,7 @@ const AuthContext = createContext(null);
 const KEYS = {
     ACCOUNT: '@tpl_account_data',
     SESSION: '@tpl_session_active',
+    ADMIN: '@tpl_is_admin',
     DRAWING_HASH: '@tpl_drawing_hash',
     PASSWORD_HASH: '@tpl_password_hash',
     PROFILE: '@tpl_user_profile',
@@ -41,6 +42,7 @@ export function AuthProvider({ children }) {
     const [isLoading, setIsLoading] = useState(true);
     const [isFirstTime, setIsFirstTime] = useState(true);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
     const [accountId, setAccountId] = useState(null);
     const [mongoUserId, setMongoUserId] = useState(null);
     const [username, setUsername] = useState('');
@@ -51,6 +53,8 @@ export function AuthProvider({ children }) {
             await AsyncStorage.multiRemove([
                 KEYS.ACCOUNT,
                 KEYS.SESSION,
+                KEYS.ADMIN,
+                '@tpl_connected_wallet_type',
                 KEYS.DRAWING_HASH,
                 KEYS.PASSWORD_HASH,
                 KEYS.PROFILE,
@@ -67,6 +71,7 @@ export function AuthProvider({ children }) {
             setAccountId(null);
             setMongoUserId(null);
             setUsername('');
+            setIsAdmin(false);
             
             // Emit global event to notify GameContext and other components
             DeviceEventEmitter.emit('TPL_ACCOUNT_IMPORTED');
@@ -109,30 +114,35 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         (async () => {
             try {
-                const [drawingHash, sessionActive, accountData, savedUsername] = await Promise.all([
+                const [drawingHash, sessionActive, accountData, savedUsername, savedAdminFlag] = await Promise.all([
                     getSecureItem(KEYS.DRAWING_HASH),
                     AsyncStorage.getItem(KEYS.SESSION),
                     AsyncStorage.getItem(KEYS.ACCOUNT),
                     AsyncStorage.getItem(KEYS.USERNAME),
+                    AsyncStorage.getItem(KEYS.ADMIN),
                 ]);
-                if (drawingHash && accountData) {
-                    // Account exists
-                    setIsFirstTime(false);
+                const isAdminSession = savedAdminFlag === 'true' || savedUsername === 'administrador';
+                if (accountData) {
                     const parsed = JSON.parse(accountData);
                     setAccountId(parsed.accountId);
                     setMongoUserId(parsed.mongoUserId || null);
                     setUsername(savedUsername || '');
-                    // Check for active session ("cookie")
-                    // MODIFIED: Even if session exists, we REQUIRE drawing on refresh for security
-                    if (sessionActive === 'true') {
+                    setIsFirstTime(false);
+                    setIsAdmin(isAdminSession);
+
+                    if (isAdminSession && sessionActive === 'true') {
+                        setIsAuthenticated(true);
+                    } else if (drawingHash && sessionActive === 'true') {
                         console.log('Session active, waiting for drawing unlock...');
                     }
                 } else {
                     setIsFirstTime(true);
+                    setIsAdmin(false);
                 }
             } catch (e) {
                 console.warn('Auth init error:', e);
                 setIsFirstTime(true);
+                setIsAdmin(false);
             }
             setIsLoading(false);
         })();
@@ -196,12 +206,14 @@ export function AuthProvider({ children }) {
                 AsyncStorage.setItem(KEYS.USERNAME, cleanName),
                 AsyncStorage.setItem(KEYS.ACCOUNT, JSON.stringify(accountData)),
                 AsyncStorage.setItem(KEYS.SESSION, 'true'),
+                AsyncStorage.setItem(KEYS.ADMIN, 'false'),
                 AsyncStorage.setItem(KEYS.REGISTRATION_DATE, new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })),
             ]);
             setAccountId(newAccountId);
             setMongoUserId(backendData.user_id);
             setUsername(cleanName);
             setIsFirstTime(false);
+            setIsAdmin(false);
             setIsAuthenticated(true);
 
             // Emitir evento global para refrescar el GameContext y el Dashboard
@@ -221,6 +233,7 @@ export function AuthProvider({ children }) {
             if (isValid) {
                 await AsyncStorage.setItem(KEYS.SESSION, 'true');
                 setIsAuthenticated(true);
+                setIsAdmin(false);
 
                 // Emitir evento global para leer el storage actual
                 DeviceEventEmitter.emit('TPL_ACCOUNT_IMPORTED');
@@ -235,6 +248,7 @@ export function AuthProvider({ children }) {
     const logout = useCallback(async () => {
         await AsyncStorage.setItem(KEYS.SESSION, 'false');
         setIsAuthenticated(false);
+        setIsAdmin(false);
     }, []);
     const verifySessionPassword = useCallback(async (password) => {
         try {
@@ -324,6 +338,7 @@ export function AuthProvider({ children }) {
                 AsyncStorage.setItem(KEYS.ACCOUNT, accountDataStr),
                 AsyncStorage.setItem(KEYS.PROFILE, profileDataStr),
                 AsyncStorage.setItem(KEYS.SESSION, 'true'),
+                AsyncStorage.setItem(KEYS.ADMIN, 'false'),
                 AsyncStorage.setItem(KEYS.REGISTRATION_DATE, importedPayload.exportedAt ? new Date(importedPayload.exportedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : new Date().toLocaleDateString()),
                 AsyncStorage.setItem(GAME_KEYS.POINTS, (accountObj.points || 0).toString()),
                 AsyncStorage.setItem(GAME_KEYS.ITEMS, JSON.stringify(accountObj.scannedItems || { bottles: 0, cans: 0, total: 0 })),
@@ -334,6 +349,7 @@ export function AuthProvider({ children }) {
             setAccountId(accountInfo.accountId || 'imported');
             setUsername(importedData.username || '');
             setIsFirstTime(false);
+            setIsAdmin(false);
             setIsAuthenticated(true);
 
             // Avisar a todo el aplicativo (principalmente GameContext) que recargue del Storage
@@ -364,6 +380,59 @@ export function AuthProvider({ children }) {
             return data ? JSON.parse(data) : null;
         } catch (e) {
             return null;
+        }
+    }, []);
+    const hydrateSessionFromUser = useCallback(async (userDoc, walletAddress = null) => {
+        try {
+            const resolvedAddress = walletAddress || userDoc.address || null;
+            const accountData = {
+                accountId: userDoc.accountId || userDoc._id || `0x${Date.now().toString(16)}`,
+                createdAt: userDoc.created_at || userDoc.join_date || new Date().toISOString(),
+                version: 2,
+                mongoUserId: userDoc._id,
+            };
+            const profileData = {
+                name: userDoc.username,
+                email: userDoc.email || '',
+                initials: userDoc.initials || (userDoc.username || 'TL').substring(0, 2).toUpperCase(),
+                avatar: userDoc.avatar_url || null,
+                walletAddress: resolvedAddress,
+            };
+            const gameUserMeta = {
+                ...profileData,
+                walletAddress: resolvedAddress,
+            };
+
+            await Promise.all([
+                AsyncStorage.setItem(KEYS.USERNAME, userDoc.username || ''),
+                AsyncStorage.setItem(KEYS.ACCOUNT, JSON.stringify(accountData)),
+                AsyncStorage.setItem(KEYS.SESSION, 'true'),
+                AsyncStorage.setItem(KEYS.ADMIN, 'false'),
+                AsyncStorage.setItem(KEYS.REGISTRATION_DATE, userDoc.join_date || userDoc.created_at || new Date().toLocaleDateString()),
+                AsyncStorage.setItem(KEYS.PROFILE, JSON.stringify(profileData)),
+                AsyncStorage.setItem('@tpl_game_user_meta', JSON.stringify(gameUserMeta)),
+                AsyncStorage.setItem('@tpl_game_points', String(userDoc.points || 0)),
+                AsyncStorage.setItem('@tpl_game_items', JSON.stringify({
+                    bottles: userDoc.bottle_scans || 0,
+                    cans: userDoc.can_scans || 0,
+                    plastic: userDoc.plastic_scans || 0,
+                    total: userDoc.total_scans || 0,
+                })),
+                AsyncStorage.setItem('@tpl_game_nfts', '[]'),
+            ]);
+
+            setAccountId(accountData.accountId);
+            setMongoUserId(userDoc._id || null);
+            setUsername(userDoc.username || '');
+            setIsFirstTime(false);
+            setIsAdmin(false);
+            setIsAuthenticated(true);
+
+            DeviceEventEmitter.emit('TPL_ACCOUNT_IMPORTED');
+            return { success: true };
+        } catch (e) {
+            console.error('Hydrate session error:', e);
+            return { success: false, error: e.message };
         }
     }, []);
     const loginAdmin = useCallback(async (adminUser, adminEmail) => {
@@ -406,6 +475,7 @@ export function AuthProvider({ children }) {
                 AsyncStorage.setItem(KEYS.USERNAME, userDoc.username),
                 AsyncStorage.setItem(KEYS.ACCOUNT, JSON.stringify(accountData)),
                 AsyncStorage.setItem(KEYS.SESSION, 'true'),
+                AsyncStorage.setItem(KEYS.ADMIN, 'true'),
                 AsyncStorage.setItem(KEYS.REGISTRATION_DATE, new Date().toLocaleDateString()),
                 AsyncStorage.setItem(KEYS.PROFILE, JSON.stringify(profileData)),
                 AsyncStorage.setItem('@tpl_game_user_meta', JSON.stringify(profileData))
@@ -415,6 +485,7 @@ export function AuthProvider({ children }) {
             setMongoUserId(userDoc._id);
             setUsername(userDoc.username);
             setIsFirstTime(false);
+            setIsAdmin(true);
             setIsAuthenticated(true);
 
             DeviceEventEmitter.emit('TPL_ACCOUNT_IMPORTED');
@@ -432,6 +503,7 @@ export function AuthProvider({ children }) {
         accountId,
         mongoUserId,
         username,
+        isAdmin,
         register,
         login,
         loginAdmin,
@@ -440,10 +512,11 @@ export function AuthProvider({ children }) {
         verifySessionPassword,
         exportAccount,
         importAccount,
+        hydrateSessionFromUser,
         saveProfile,
         loadProfile,
         setUsername,
-    }), [isLoading, isFirstTime, isAuthenticated, accountId, mongoUserId, username, register, login, loginAdmin, logout, clearLocalAccount, verifySessionPassword, exportAccount, importAccount, saveProfile, loadProfile, setUsername]);
+    }), [isLoading, isFirstTime, isAuthenticated, isAdmin, accountId, mongoUserId, username, register, login, loginAdmin, logout, clearLocalAccount, verifySessionPassword, exportAccount, importAccount, hydrateSessionFromUser, saveProfile, loadProfile, setUsername]);
     return (
         <AuthContext.Provider value={value}>
             {children}
