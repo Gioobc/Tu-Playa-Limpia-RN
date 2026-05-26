@@ -8,11 +8,11 @@ import { useEffect } from "react"
 const WalletContext = createContext()
 
 const NETWORK = {
-  chainId: 57042,
-  chainIdHex: "0xded2",
-  chainName: "zkSYS PoB Devnet",
-  rpcUrl: "https://rpc-pob.dev11.top",
-  blockExplorerUrl: "https://explorer-pob.dev11.top",
+  chainId: 57057,
+  chainIdHex: "0xDEE1",
+  chainName: "zkTanenbaum Testnet",
+  rpcUrl: "https://rpc-zk.tanenbaum.io/",
+  blockExplorerUrl: "https://explorer-zk.tanenbaum.io/",
   nativeCurrency: {
     name: "TSYS",
     symbol: "TSYS",
@@ -228,7 +228,16 @@ export function WalletProvider({ children }) {
 
       const Web3Provider = ethers.providers?.Web3Provider || ethers.BrowserProvider;
       const ethersProvider = new Web3Provider(ethProvider);
-      await ethProvider.request({ method: "eth_requestAccounts" });
+      
+      try {
+        await ethProvider.request({ method: "eth_requestAccounts" });
+      } catch (reqErr) {
+        if (reqErr.code === 4100) {
+          alert("Pali Wallet está bloqueada. Por favor, abre la extensión, ingresa tu contraseña y vuelve a hacer clic en conectar.");
+          return;
+        }
+        throw reqErr;
+      }
 
       await switchNetwork(ethProvider);
 

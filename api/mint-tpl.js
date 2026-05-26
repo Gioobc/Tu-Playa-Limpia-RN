@@ -1,8 +1,8 @@
 import { ethers } from 'ethers';
 
-// zkSYS PoB Devnet Configuration
-const RPC_URL = process.env.BLOCKCHAIN_RPC_URL || 'https://rpc-pob.dev11.top';
-const CONTRACT_ADDRESS = process.env.EXPO_PUBLIC_TPL_TOKEN_ADDRESS || "0xdbe03da0a41ac28939876416773bec40c3b6a042";
+// zkTanenbaum Testnet Configuration
+const RPC_URL = process.env.BLOCKCHAIN_RPC_URL || 'https://rpc-zk.tanenbaum.io/';
+const CONTRACT_ADDRESS = process.env.EXPO_PUBLIC_TPL_TOKEN_ADDRESS || "0x6b5A158bD2558F5C484efE7dFC9E330213e8c6e8";
 const ADMIN_PRIVATE_KEY = process.env.EXPO_PUBLIC_ADMIN_PRIVATE_KEY;
 
 const ABI = [
@@ -40,9 +40,12 @@ export default async function handler(req, res) {
         const wallet = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
         const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, wallet);
 
-        console.log(`📡 Minting ${amount} TPL to ${address}...`);
+        console.log(`📡 Fetching decimals and minting ${amount} TPL to ${address}...`);
+        
+        const decimals = await contract.decimals();
+        const amountInWei = ethers.utils.parseUnits(amount.toString(), decimals);
 
-        const tx = await contract.mint(address, amount);
+        const tx = await contract.mint(address, amountInWei);
         const receipt = await tx.wait();
 
         console.log(`✅ Minting complete. Hash: ${receipt.transactionHash}`);

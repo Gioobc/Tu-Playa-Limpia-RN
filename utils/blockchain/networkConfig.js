@@ -1,16 +1,16 @@
 import { ethers } from "ethers";
 export const NETWORK_CONFIG = {
-  chainId: 57042,
-  chainIdHex: "0xded2",
-  chainName: "zkSYS PoB Devnet",
+  chainId: 57057,
+  chainIdHex: "0xDEE1",
+  chainName: "zkTanenbaum Testnet",
   nativeCurrency: {
     name: "TSYS",
     symbol: "TSYS",
     decimals: 18
   },
-  rpcUrl: "https://rpc-pob.dev11.top",
-  blockExplorerUrl: "https://explorer-pob.dev11.top",
-  blockExplorerUrls: ["https://explorer-pob.dev11.top"],
+  rpcUrl: "https://rpc-zk.tanenbaum.io/",
+  blockExplorerUrl: "https://explorer-zk.tanenbaum.io/",
+  blockExplorerUrls: ["https://explorer-zk.tanenbaum.io/"],
 };
 export function getProvider() {
   if (!window.ethereum) {
@@ -63,7 +63,7 @@ export async function connectWallet() {
   }
   const activeAddress = accounts[0].toLowerCase();
   await switchToZkSys(externalProvider);
-  const ethersProvider = new ethers.providers.Web3Provider(externalProvider);
+  const ethersProvider = new ethers.providers.Web3Provider(externalProvider, "any");
   const signer = ethersProvider.getSigner();
   const address = await signer.getAddress();
   try {

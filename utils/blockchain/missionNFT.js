@@ -1,12 +1,12 @@
 import { ethers } from "ethers";
 import MissionNFTABI from "./MissionNFT.json";
-const CONTRACT_ADDRESS = process.env.EXPO_PUBLIC_MISSION_NFT_ADDRESS || "0x0D0dfA1dE746B6eF0685e40bB48AFCb471b7a64c";
+const CONTRACT_ADDRESS = process.env.EXPO_PUBLIC_MISSION_NFT_ADDRESS || "0xeB96BC56E6a395aE6232B0561BeD746F4eB2b1cE";
 export const getContract = async () => {
   if (!window.ethereum) {
     throw new Error("No hay wallet instalada");
   }
   const Web3Provider = ethers.providers?.Web3Provider || ethers.BrowserProvider;
-  const provider = new Web3Provider(window.ethereum);
+  const provider = new Web3Provider(window.ethereum, "any");
   const signer = provider.getSigner ? provider.getSigner() : provider.getSigner();
   return new ethers.Contract(
     CONTRACT_ADDRESS,

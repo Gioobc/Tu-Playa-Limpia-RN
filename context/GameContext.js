@@ -4,6 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateNFTAttributes } from '../utils/nftGenerator';
 import { fetchUserNFTs } from '../utils/blockchain/missionNFT';
 import { fetchTPLBalance, fetchUserTitle } from '../utils/blockchain/tplToken';
+import { useAuth } from './AuthContext';
+import ENV from '../constants/env';
 const GameContext = createContext();
 export const useGame = () => useContext(GameContext);
 const GAME_KEYS = {
@@ -14,14 +16,16 @@ const GAME_KEYS = {
     CLEANUP_HISTORY: '@tpl_game_cleanup_history',
 };
 export const GameProvider = ({ children }) => {
+    const { mongoUserId, setUsername: setAuthUsername } = useAuth();
     const [points, setPoints] = useState(0);
-    const [scannedItems, setScannedItems] = useState({ bottles: 0, cans: 0, total: 0 });
+    const [scannedItems, setScannedItems] = useState({ bottles: 0, cans: 0, plastic: 0, total: 0 });
     const [nfts, setNfts] = useState([]);
     const [level, setLevel] = useState(1);
     const [activeBeach, setActiveBeach] = useState(null);
     const [cleanupHistory, setCleanupHistory] = useState([]);
     const [user, setUser] = useState({
         name: '...',
+        email: '',
         avatar: null,
         initials: '..',
         hasChangedUsername: false,
@@ -148,7 +152,7 @@ export const GameProvider = ({ children }) => {
                 console.log('📦 AsyncStorage y Blockchain vacíos, buscando NFTs en MongoDB...');
                 try {
                     if (walletAddress) {
-                        const appUrl = process.env.EXPO_PUBLIC_APP_URL || 'https://tu-playa-limpia.vercel.app';
+                        const appUrl = ENV.APP_URL;
                         const resp = await fetch(`${appUrl}/api/nfts?wallet=${walletAddress}`);
                         if (resp.ok) {
                             const { nfts: backupNfts } = await resp.json();
@@ -277,7 +281,16 @@ export const GameProvider = ({ children }) => {
         const value = customPoints !== null ? customPoints : (SCORING[type] || 0);
 
         setPoints(prev => prev + value);
-        setScannedItems(prev => ({ ...prev, [type]: (prev[type] || 0) + 1, total: prev.total + 1 }));
+        
+        // Update scanned items state
+        setScannedItems(prev => {
+            const updated = { 
+                ...prev, 
+                [type]: (prev[type] || 0) + 1, 
+                total: (prev.total || 0) + 1 
+            };
+            return updated;
+        });
 
         // Track in cleanup history if there's an active beach
         if (activeBeach) {
@@ -316,12 +329,14 @@ export const GameProvider = ({ children }) => {
         setActiveBeach(null);
     };
 
-    const syncTPLToBlockchain = async () => {
-        if (!user.walletAddress || points <= 0) return { success: false, error: 'No wallet or points to sync' };
+    const syncTPLToBlockchain = async (amount = null) => {
+        const mintAmount = amount !== null ? amount : points;
+        if (!user.walletAddress || mintAmount <= 0) return { success: false, error: 'No wallet or points to sync' };
 
         try {
-            console.log(`📡 Iniciando sincronización de ${points} TPL a la Blockchain...`);
-            const appUrl = process.env.EXPO_PUBLIC_APP_URL || 'https://tu-playa-limpia.vercel.app';
+            console.log(`📡 Iniciando sincronización de ${mintAmount} TPL a la Blockchain...`);
+            // Prioridad: Variable de entorno > Localhost (si estamos en dev) > Fallback Vercel
+            const appUrl = ENV.APP_URL;
 
             const response = await fetch(`${appUrl}/api/mint-tpl`, {
                 method: 'POST',
@@ -330,7 +345,7 @@ export const GameProvider = ({ children }) => {
                 },
                 body: JSON.stringify({
                     address: user.walletAddress,
-                    amount: points
+                    amount: mintAmount
                 }),
             });
 
@@ -352,8 +367,57 @@ export const GameProvider = ({ children }) => {
         }
     };
 
-    const updateUserProfile = (updates) => {
-        setUser(prev => ({ ...prev, ...updates }));
+    const updateUserProfile = async (updates) => {
+        // Update local state
+        setUser(prev => {
+            const updated = { ...prev, ...updates };
+            // Persist user data to AsyncStorage
+            AsyncStorage.setItem(GAME_KEYS.USER, JSON.stringify(updated)).catch(err => 
+                console.warn('Error persisting user data:', err)
+            );
+            return updated;
+        });
+
+        // Keep AuthContext username in sync if name changes
+        if (updates.name && setAuthUsername) {
+            setAuthUsername(updates.name);
+            AsyncStorage.setItem('@tpl_username', updates.name).catch(err =>
+                console.warn('Error persisting auth username:', err)
+            );
+        }
+        
+        // ✅ Sync with backend if mongoUserId is available
+        if (mongoUserId) {
+            try {
+                const apiUrl = ENV.API_BASE_URL;
+                
+                const backendUpdates = { ...updates };
+                if (updates.avatar) {
+                    backendUpdates.avatar_url = updates.avatar;
+                    delete backendUpdates.avatar;
+                }
+                if (updates.name) {
+                    backendUpdates.username = updates.name;
+                    delete backendUpdates.name;
+                }
+                
+                const response = await fetch(`${apiUrl}/api/users/${mongoUserId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(backendUpdates),
+                });
+                
+                if (!response.ok) {
+                    console.warn('⚠️ Error syncing profile to backend:', response.status);
+                } else {
+                    console.log('✅ Profile synced to backend');
+                }
+            } catch (error) {
+                console.warn('⚠️ Error updating user profile in backend:', error.message);
+            }
+        }
     };
     return (
         <GameContext.Provider value={{

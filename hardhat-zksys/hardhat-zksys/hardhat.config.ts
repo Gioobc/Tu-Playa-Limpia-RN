@@ -26,11 +26,11 @@ export default defineConfig({
     hardhatMainnet: { type: "edr-simulated", chainType: "l1" },
     hardhatOp: { type: "edr-simulated", chainType: "op" },
 
-    // zkSYS PoB Devnet
-    zkSYS_PoB_Devnet: {
+    // zkTanenbaum Testnet
+    zkTanenbaum_Testnet: {
       type: "http",
-      chainId: 57042,
-      url: "https://rpc-pob.dev11.top",
+      chainId: 57057,
+      url: "https://rpc-zk.tanenbaum.io/",
       accounts: OWNER_PRIVATE_KEY ? [OWNER_PRIVATE_KEY] : [],
     },
   },

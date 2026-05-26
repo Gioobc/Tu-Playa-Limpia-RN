@@ -1,0 +1,20 @@
+{
+  "name": "deploy-zksync",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "deploy": "npx hardhat deploy-zksync --script deploy.ts --network zkTanenbaum"
+  },
+  "devDependencies": {
+    "@matterlabs/hardhat-zksync-deploy": "^1.5.0",
+    "@matterlabs/hardhat-zksync-solc": "^1.2.5",
+    "@openzeppelin/contracts": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0",
+    "hardhat": "^2.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0",
+    "zksync-ethers": "^6.8.0"
+  }
+}

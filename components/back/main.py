@@ -1,6 +1,7 @@
-import os, hashlib, requests
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
-from fastapi.responses import JSONResponse
+import os, hashlib, requests, uuid
+import bcrypt
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, BackgroundTasks
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -13,16 +14,22 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Configurar CORS para permitir peticiones desde el frontend
+# Configurar CORS con mayor flexibilidad para Vercel
+# Nota: allow_origins=["*"] no funciona con allow_credentials=True
+# Por lo tanto, usamos una lista más amplia o permitimos dinámicamente
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permite todos los orígenes (para desarrollo)
+    allow_origin_regex=r"https://.*\.vercel\.app|https://tuplayalimpia-tpl\.vercel\.app|http://localhost:.*|http://127\.0\.0\.1:.*",
     allow_credentials=True,
-    allow_methods=["*"],  # Permite todos los métodos (GET, POST, etc.)
-    allow_headers=["*"],  # Permite todos los headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+from dotenv import load_dotenv
+load_dotenv()
+
 API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
 
 MODEL_ID = "ocean-waste/2"
 CONF = int(os.getenv("CONF", "40"))   # 0-100 (bajamos a 40 para más detecciones)
@@ -54,9 +61,564 @@ class ReportData(BaseModel):
     user_id: Optional[str] = Field(None, max_length=50)
     user_name: Optional[str] = Field("Anonymous", max_length=100)
 
+class UserBase(BaseModel):
+    username: str = Field(..., max_length=60)
+    email: Optional[str] = Field(None, max_length=100)
+    initials: Optional[str] = Field(None, max_length=10)
+    avatar_url: Optional[str] = None
+    tpl_title: Optional[str] = Field(None, max_length=100)
+    points: Optional[int] = 0
+    level: Optional[int] = 1
+    total_scans: Optional[int] = 0
+    bottle_scans: Optional[int] = 0
+    can_scans: Optional[int] = 0
+    plastic_scans: Optional[int] = 0
+    has_changed_username: Optional[bool] = False
+    has_awarded_profile_visit: Optional[bool] = False
+
+class UserCreate(UserBase):
+    password: str = Field(..., min_length=6)
+
+class UserLogin(BaseModel):
+    username: str = Field(..., max_length=60)
+    password: str = Field(..., min_length=6)
+
+
+class AdminLogin(BaseModel):
+    username: str = Field(..., max_length=60)
+    email: str = Field(..., max_length=100)
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def get_ngrok_url() -> str:
+    """Detect dynamic ngrok public URL using local agent API"""
+    try:
+        response = requests.get("http://127.0.0.1:4040/api/tunnels", timeout=2)
+        if response.status_code == 200:
+            data = response.json()
+            tunnels = data.get("tunnels", [])
+            for tunnel in tunnels:
+                if tunnel.get("proto") == "https":
+                    logger.info(f"✨ Detected active HTTPS ngrok tunnel: {tunnel.get('public_url')}")
+                    return tunnel.get("public_url")
+            if tunnels:
+                logger.info(f"✨ Detected active ngrok tunnel: {tunnels[0].get('public_url')}")
+                return tunnels[0].get("public_url")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not fetch dynamic ngrok URL: {e}")
+    # Fallback
+    return os.environ.get("NGROK_URL", "http://localhost:8000")
+
+
+def get_success_html(email: str) -> str:
+    return f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Cuenta Eliminada - Tu Playa Limpia</title>
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+        <style>
+            body {{
+                font-family: 'Outfit', sans-serif;
+                background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+                color: #f8fafc;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                margin: 0;
+                padding: 20px;
+                box-sizing: border-box;
+            }}
+            .card {{
+                background: rgba(255, 255, 255, 0.1);
+                backdrop-filter: blur(16px);
+                -webkit-backdrop-filter: blur(16px);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 24px;
+                padding: 40px;
+                max-width: 500px;
+                width: 100%;
+                text-align: center;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+                animation: fadeInUp 0.6s ease-out;
+            }}
+            .icon {{
+                font-size: 60px;
+                margin-bottom: 20px;
+                animation: scaleIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.2s both;
+            }}
+            h1 {{
+                font-size: 28px;
+                font-weight: 800;
+                margin: 0 0 10px 0;
+                color: #ffffff;
+            }}
+            p {{
+                font-size: 16px;
+                line-height: 1.6;
+                color: #cbd5e1;
+                margin: 0 0 24px 0;
+            }}
+            .email {{
+                font-weight: 600;
+                color: #2dd4bf;
+                background: rgba(45, 212, 191, 0.1);
+                padding: 4px 10px;
+                border-radius: 8px;
+                word-break: break-all;
+            }}
+            .badge {{
+                display: inline-block;
+                background: rgba(244, 63, 94, 0.2);
+                border: 1px solid rgba(244, 63, 94, 0.3);
+                color: #fda4af;
+                padding: 6px 16px;
+                border-radius: 30px;
+                font-size: 14px;
+                font-weight: 600;
+                margin-bottom: 20px;
+            }}
+            @keyframes fadeInUp {{
+                from {{ opacity: 0; transform: translateY(20px); }}
+                to {{ opacity: 1; transform: translateY(0); }}
+            }}
+            @keyframes scaleIn {{
+                from {{ transform: scale(0); }}
+                to {{ transform: scale(1); }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <div class="icon">🗑️</div>
+            <div class="badge">Acción Confirmada</div>
+            <h1>Cuenta Eliminada</h1>
+            <p>La cuenta asociada al correo <span class="email">{email}</span> ha sido eliminada de nuestra base de datos de manera definitiva.</p>
+            <p>Las sesiones activas en cualquier dispositivo se cerrarán automáticamente en los próximos segundos.</p>
+        </div>
+    </body>
+    </html>
+    """
+
+
+def get_error_html(message: str) -> str:
+    return f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Error - Tu Playa Limpia</title>
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+        <style>
+            body {{
+                font-family: 'Outfit', sans-serif;
+                background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+                color: #f8fafc;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                margin: 0;
+                padding: 20px;
+                box-sizing: border-box;
+            }}
+            .card {{
+                background: rgba(255, 255, 255, 0.05);
+                backdrop-filter: blur(16px);
+                -webkit-backdrop-filter: blur(16px);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 24px;
+                padding: 40px;
+                max-width: 500px;
+                width: 100%;
+                text-align: center;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+                animation: fadeInUp 0.6s ease-out;
+            }}
+            .icon {{
+                font-size: 60px;
+                margin-bottom: 20px;
+            }}
+            h1 {{
+                font-size: 28px;
+                font-weight: 800;
+                margin: 0 0 10px 0;
+                color: #f1f5f9;
+            }}
+            p {{
+                font-size: 16px;
+                line-height: 1.6;
+                color: #94a3b8;
+                margin: 0 0 24px 0;
+            }}
+            .badge {{
+                display: inline-block;
+                background: rgba(239, 68, 68, 0.15);
+                border: 1px solid rgba(239, 68, 68, 0.3);
+                color: #fca5a5;
+                padding: 6px 16px;
+                border-radius: 30px;
+                font-size: 14px;
+                font-weight: 600;
+                margin-bottom: 20px;
+            }}
+            @keyframes fadeInUp {{
+                from {{ opacity: 0; transform: translateY(20px); }}
+                to {{ opacity: 1; transform: translateY(0); }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <div class="icon">⚠️</div>
+            <div class="badge">Error de Solicitud</div>
+            <h1>No se pudo procesar</h1>
+            <p>{message}</p>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Tu Playa Limpia API is running",
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "model": MODEL_ID}
+
+def send_welcome_email(email: str, username: str):
+    if not email:
+        logger.warning("⚠️ No email address provided for welcome notification")
+        return
+    
+    # Detect public ngrok tunnel URL and generate deletion token
+    ngrok_url = get_ngrok_url()
+    token = hashlib.sha256(f"{email}-tpl-delete-secret-key-2026".encode()).hexdigest()
+    delete_url = f"{ngrok_url}/api/users/delete-by-email?email={email}&token={token}"
+    
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json",
+        "accept": "application/json"
+    }
+    payload = {
+        "sender": {
+            "name": "Tu Playa Limpia",
+            "email": "bmmvf29s6k@privaterelay.appleid.com"
+        },
+        "to": [
+            {
+                "email": email,
+                "name": username
+            }
+        ],
+        "subject": "¡Bienvenido a Tu Playa Limpia!",
+        "htmlContent": f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f7f6;">
+                <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f7f6; padding: 20px;">
+                    <tr>
+                        <td>
+                            <table align="center" width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+                                <tr>
+                                    <td align="center" style="padding-bottom: 20px;">
+                                        <h1 style="color: #0d9488; margin: 0; font-size: 26px; font-weight: 800;">Tu Playa Limpia</h1>
+                                        <p style="color: #64748b; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; margin: 5px 0 0 0; font-weight: 600;">Cuidando nuestras costas</p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="font-size: 16px; color: #334155; line-height: 1.8;">
+                                        <p style="margin-top: 0;">¡Hola <strong>{username}</strong>!</p>
+                                        <p>¡Felicidades! Tu cuenta ha sido creada exitosamente en <strong>Tu Playa Limpia</strong>.</p>
+                                        <p>Estamos muy entusiasmados de tenerte en nuestro equipo. Cada acción cuenta, y juntos lograremos preservar y limpiar nuestros hermosos ecosistemas costeros.</p>
+                                        <p>Con tu nueva cuenta, ya puedes empezar a:</p>
+                                        <ul style="padding-left: 20px; color: #475569;">
+                                            <li>Escanear y clasificar residuos plásticos y latas con nuestra cámara inteligente.</li>
+                                            <li>Ganar puntos <strong>TPL</strong> e intercambiarlos.</li>
+                                            <li>Coleccionar <strong>NFTs ecológicos</strong> que demuestran tu impacto positivo directo.</li>
+                                            <li>Consultar el estado ecológico de las playas y participar en actividades locales.</li>
+                                        </ul>
+                                        <p>¡Gracias por dar el primer paso hoy para un océano y playas más limpias!</p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding-top: 20px; padding-bottom: 20px; border-top: 1px solid #e2e8f0; font-size: 14px; color: #64748b; line-height: 1.6;">
+                                        <p style="margin: 0; font-weight: 600; color: #dc2626;">¿No has creado esta cuenta?</p>
+                                        <p style="margin: 5px 0 15px 0;">Si otra persona usó tu dirección de correo electrónico por error o sin tu consentimiento, puedes eliminar la cuenta inmediatamente y cerrar cualquier sesión activa haciendo clic en el botón de abajo:</p>
+                                        <div align="center">
+                                            <a href="{delete_url}" style="background-color: #dc2626; color: #ffffff; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block; font-size: 14px; box-shadow: 0 4px 6px rgba(220, 38, 38, 0.15);">No he sido yo - Eliminar Cuenta</a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td align="center" style="padding-top: 30px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
+                                        <p style="margin: 0;">Este correo electrónico se envió automáticamente desde Tu Playa Limpia.</p>
+                                        <p style="margin: 5px 0 0 0;">Por favor, no respondas directamente a este mensaje.</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </body>
+        </html>
+        """
+    }
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        if response.status_code in [200, 201, 202]:
+            logger.info(f"✅ Welcome email sent successfully to {email} (Status: {response.status_code})")
+        else:
+            logger.error(f"❌ Failed to send welcome email to {email}. Status code: {response.status_code}, Response: {response.text}")
+    except Exception as e:
+        logger.error(f"❌ Exception occurred while sending welcome email: {str(e)}")
+
+
+@app.post("/api/users/register")
+async def register_user(user: UserCreate, background_tasks: BackgroundTasks):
+    """Registrar un usuario nuevo en MongoDB con contraseña hasheada."""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        existing = db_connection.find_user_by_username(user.username)
+        if existing:
+            raise HTTPException(409, "El nombre de usuario ya está en uso")
+
+        user_data = user.dict(exclude={"password"})
+        user_data["_id"] = str(uuid.uuid4())
+        user_data["password_hash"] = hash_password(user.password)
+        user_data["join_date"] = datetime.utcnow().isoformat()
+        user_data["created_at"] = datetime.utcnow().isoformat()
+
+        user_id = db_connection.insert_user(user_data)
+
+        # Enviar correo de bienvenida si se proporcionó un email
+        if user.email:
+            background_tasks.add_task(send_welcome_email, user.email, user.username)
+
+        return {
+            "success": True,
+            "message": "Usuario registrado correctamente",
+            "user_id": user_id,
+            "username": user.username
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error registrando usuario: {str(e)}")
+        raise HTTPException(500, f"Error al registrar usuario: {str(e)}")
+
+@app.post("/api/users/login")
+async def login_user(credentials: UserLogin):
+    """Verificar credenciales de usuario y devolver datos básicos sin contraseña."""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        user_doc = db_connection.find_user_by_username(credentials.username)
+        if not user_doc or not verify_password(credentials.password, user_doc.get("password_hash", "")):
+            raise HTTPException(401, "Credenciales inválidas")
+
+        user_doc.pop("password_hash", None)
+        if "_id" in user_doc:
+            user_doc["_id"] = str(user_doc["_id"])
+
+        return {
+            "success": True,
+            "message": "Inicio de sesión exitoso",
+            "user": user_doc
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error en login de usuario: {str(e)}")
+        raise HTTPException(500, f"Error al iniciar sesión: {str(e)}")
+
+
+@app.post("/api/users/admin-login")
+async def admin_login(credentials: AdminLogin):
+    """Verificar nombre de usuario de administrador y devolver datos básicos sin contraseña."""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        # Buscamos al usuario por username
+        user_doc = db_connection.find_user_by_username(credentials.username)
+        if not user_doc or user_doc.get("email") != "admintpl@tpl.mainadmin" or credentials.email.strip().lower() != "admintpl@tpl.mainadmin":
+            raise HTTPException(401, "Acceso denegado: Credenciales de administrador incorrectas")
+
+        user_doc.pop("password_hash", None)
+        if "_id" in user_doc:
+            user_doc["_id"] = str(user_doc["_id"])
+
+        return {
+            "success": True,
+            "message": "Inicio de sesión de administrador exitoso",
+            "user": user_doc
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error en login de administrador: {str(e)}")
+        raise HTTPException(500, f"Error al iniciar sesión de administrador: {str(e)}")
+
+
+@app.put("/api/users/{user_id}")
+async def update_user(user_id: str, updates: dict):
+    """Actualizar campos del usuario (avatar_url, nombre, puntos, etc.)"""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        # Campos permitidos para actualizar
+        allowed_fields = {
+            "avatar_url", "username", "email", "tpl_title", "points", "level",
+            "total_scans", "bottle_scans", "can_scans", "plastic_scans", "has_changed_username",
+            "has_awarded_profile_visit", "initials"
+        }
+        
+        # Filtrar solo campos permitidos
+        filtered_updates = {k: v for k, v in updates.items() if k in allowed_fields}
+        
+        if not filtered_updates:
+            raise HTTPException(400, "No valid fields to update")
+
+        filtered_updates["updated_at"] = datetime.utcnow().isoformat()
+        
+        db_connection.update_user(user_id, filtered_updates)
+        
+        # Obtener el usuario actualizado
+        updated_user = db_connection.find_user_by_id(user_id)
+        if updated_user:
+            updated_user.pop("password_hash", None)
+            if "_id" in updated_user:
+                updated_user["_id"] = str(updated_user["_id"])
+        
+        return {
+            "success": True,
+            "message": "Usuario actualizado correctamente",
+            "user": updated_user
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error actualizando usuario: {str(e)}")
+        raise HTTPException(500, f"Error al actualizar usuario: {str(e)}")
+
+@app.get("/api/users/status/{user_id}")
+async def get_user_status(user_id: str):
+    """Verificar si un usuario existe y su estado. Retorna 404 si fue eliminado."""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+            
+        user_doc = db_connection.find_user_by_id(user_id)
+        if not user_doc:
+            raise HTTPException(404, "Usuario no encontrado")
+            
+        return {
+            "success": True,
+            "exists": True,
+            "username": user_doc.get("username")
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error consultando estado de usuario: {str(e)}")
+        raise HTTPException(500, f"Error interno: {str(e)}")
+
+
+@app.get("/api/users/delete-by-email", response_class=HTMLResponse)
+async def delete_user_by_email_endpoint(email: str, token: str):
+    """Endpoint para eliminar cuenta desde el correo de confirmación."""
+    try:
+        if not MONGODB_AVAILABLE:
+            return HTMLResponse(
+                content=get_error_html("Base de datos no disponible temporalmente. Inténtalo de nuevo más tarde."),
+                status_code=503
+            )
+            
+        # Validar token
+        expected_token = hashlib.sha256(f"{email}-tpl-delete-secret-key-2026".encode()).hexdigest()
+        if token != expected_token:
+            return HTMLResponse(
+                content=get_error_html("El enlace de eliminación no es válido o ha expirado."),
+                status_code=400
+            )
+            
+        # Buscar y eliminar usuario
+        user_doc = db_connection.find_user_by_email(email)
+        if not user_doc:
+            return HTMLResponse(
+                content=get_error_html("No se encontró ninguna cuenta asociada a este correo electrónico."),
+                status_code=404
+            )
+            
+        # Eliminar
+        deleted = db_connection.delete_user_by_email(email)
+        if deleted:
+            return HTMLResponse(
+                content=get_success_html(email),
+                status_code=200
+            )
+        else:
+            return HTMLResponse(
+                content=get_error_html("No se pudo eliminar la cuenta. Por favor contáctanos."),
+                status_code=500
+            )
+    except Exception as e:
+        logger.error(f"❌ Error en eliminación de usuario: {str(e)}")
+        return HTMLResponse(
+            content=get_error_html(f"Error interno del servidor: {str(e)}"),
+            status_code=500
+        )
+
+
+@app.get("/api/users")
+async def get_users(limit: int = 50):
+    """Obtener todos los usuarios con actividad de escaneo."""
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        users = db_connection.get_all_users(limit)
+        
+        # Filtrar campos sensibles y convertir ObjectIds
+        for user in users:
+            user.pop("password_hash", None)
+            if "_id" in user:
+                user["_id"] = str(user["_id"])
+        
+        return {
+            "success": True,
+            "count": len(users),
+            "users": users
+        }
+    except Exception as e:
+        logger.error(f"❌ Error obteniendo usuarios: {str(e)}")
+        raise HTTPException(500, f"Error al obtener usuarios: {str(e)}")
 
 @app.post("/scan")
 async def scan(request: Request):
@@ -244,6 +806,35 @@ async def get_all_reports(limit: int = 100):
         logger.error(f"❌ Error obteniendo reportes: {str(e)}")
         raise HTTPException(500, f"Error al obtener reportes: {str(e)}")
 
+
+@app.get("/api/beaches")
+async def get_beaches():
+    """
+    Obtener todas las playas de TPLPlayas > DatosPlaya
+    """
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+        
+        beaches = db_connection.get_all_beaches()
+        
+        # Convertir ObjectId a string para JSON
+        for beach in beaches:
+            beach["_id"] = str(beach["_id"])
+        
+        logger.info(f"🏖️ Se obtuvieron {len(beaches)} playas")
+        
+        return {
+            "success": True,
+            "count": len(beaches),
+            "beaches": beaches
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error obteniendo playas: {str(e)}")
+        raise HTTPException(500, f"Error al obtener playas: {str(e)}")
 
 @app.get("/api/reports/status")
 async def get_database_status():

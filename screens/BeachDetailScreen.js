@@ -41,7 +41,7 @@ export default function BeachDetailScreen({ route, navigation }) {
     const statusColor = beach.clean ? BLUE_GREY : "#f59e0b";
 
     const handleOpenMap = () => {
-        const url = `https://www.google.com/maps/search/?api=1&query=${beach.lat},${beach.lng}`;
+        const url = beach.mapUrl || `https://www.google.com/maps/search/?api=1&query=${beach.lat},${beach.lng}`;
         if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         Linking.openURL(url);
     };

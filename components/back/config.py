@@ -6,10 +6,17 @@ load_dotenv()
 # MongoDB Configuration
 MONGODB_URI = os.getenv(
     "MONGODB_URI",
-    "mongodb+srv://hola:hola123456@cluster0.uc0vvkm.mongodb.net/"
+    "mongodb://localhost:27017/tplreportes"
 )
-DATABASE_NAME = "TPLPlayas"
+DATABASE_NAME = "TPLReportes"  # Existing reports database
 REPORTS_COLLECTION = "datosreportes"
+
+# Usuarios DB
+USER_DATABASE_NAME = "TPLUsuarios"
+USER_COLLECTION = "DatosUsuario"
+
+# Playas DB
+BEACHES_DB_NAME = "TPLPlayas"
 BEACHES_COLLECTION = "DatosPlaya"
 
 # Server Configuration

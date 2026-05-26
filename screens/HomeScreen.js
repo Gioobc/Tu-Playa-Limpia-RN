@@ -73,7 +73,7 @@ const ActionItem = ({ icon, label, delay = 0, onPress, customWidth }) => {
         </AnimatedPressable>
     );
 };
-const BalanceCard = ({ onRedeem, points, nfts }) => {
+const BalanceCard = ({ onRedeem, balance, nfts }) => {
     const { colors, shadows, isDark } = useTheme();
     const { t } = useLanguage();
     const balanceScale = useSharedValue(1);
@@ -113,7 +113,7 @@ const BalanceCard = ({ onRedeem, points, nfts }) => {
                             <Text style={styles.redeemButtonText}>{t('home_redeem_tpl')}</Text>
                         </TouchableOpacity>
                     </View>
-                    <Text style={styles.balanceValue}>{points} TPL</Text>
+                    <Text style={styles.balanceValue}>{balance !== null ? balance : '0'} TPL</Text>
                     <View style={styles.statsRow}>
                         <View style={styles.statItem}>
                             <Text style={styles.statValue}>{nfts.length}</Text>
@@ -121,7 +121,7 @@ const BalanceCard = ({ onRedeem, points, nfts }) => {
                         </View>
                         <View style={styles.statDivider} />
                         <View style={styles.statItem}>
-                            <Text style={styles.statValue}>{points}</Text>
+                            <Text style={styles.statValue}>{balance !== null ? balance : '0'}</Text>
                             <Text style={styles.statLabel}>{t('home_points')}</Text>
                         </View>
                     </View>
@@ -138,8 +138,13 @@ import { useWallet } from '../context/WalletContext';
 import { useAuth } from '../context/AuthContext';
 import { fetchTPLBalance } from '../utils/blockchain/tplToken';
 const NoticeBanner = () => {
-    const { colors, isDark } = useTheme();
-    const { t } = useLanguage();
+    const { colors } = useTheme();
+    const { address } = useWallet();
+    
+    const bannerText = address 
+        ? "Recuerda: Debes importar el contrato de Tokens TPL para el canje durante las sesiones de escaneo. Si ya lo tienes registrado, ¡felicitaciones! puedes continuar con el juego."
+        : "Recuerda: Para poder coleccionar Tokens TPL, debes tener una wallet asociada al juego. De lo contrario, no podrás registrar ingresos usables para el canje de títulos, entre otros. Además, recuerda que se debe importar el contrato de Tokens TPL.";
+
     return (
         <Animated.View
             entering={FadeInDown.delay(300).springify()}
@@ -150,10 +155,10 @@ const NoticeBanner = () => {
                     <View style={styles.noticeIconBox}>
                         <Ionicons name="notifications" size={rs(18)} color={BRAND.sandGold} />
                     </View>
-                    <Text style={[styles.noticeTitle, { color: colors.text }]}>{t('home_notice_title')}</Text>
+                    <Text style={[styles.noticeTitle, { color: colors.text }]}>Aviso Importante</Text>
                 </View>
                 <Text style={[styles.noticeDescription, { color: colors.textSecondary }]}>
-                    {t('home_notice_description')}
+                    {bannerText}
                 </Text>
             </GlassCard>
         </Animated.View>
@@ -164,7 +169,7 @@ export default function HomeScreen() {
     const navigation = useNavigation();
     const { user, points, nfts, level, updateUserProfile, syncTPLToBlockchain } = useGame();
     const { username } = useAuth();
-    const { address } = useWallet();
+    const { address, provider: walletProvider } = useWallet();
     const { colors, shadows, isDark } = useTheme();
     const { t, language } = useLanguage();
     const { width } = useWindowDimensions();
@@ -173,13 +178,15 @@ export default function HomeScreen() {
     const [tplBalance, setTplBalance] = React.useState(null);
     useEffect(() => {
         const getBalance = async () => {
-            if (address) {
-                const bal = await fetchTPLBalance(address);
+            if (address && walletProvider) {
+                const bal = await fetchTPLBalance(address, walletProvider);
                 setTplBalance(parseFloat(bal));
+            } else {
+                setTplBalance(0);
             }
         };
         getBalance();
-    }, [address]);
+    }, [address, walletProvider]);
     const handleTitleUpdate = (newTitle) => {
         updateUserProfile({ tplTitle: newTitle });
         setShowRedeemModal(false);
@@ -247,7 +254,7 @@ export default function HomeScreen() {
                         <View style={isDesktop ? { flex: 0.4, marginRight: SPACING.xl } : { width: '100%' }}>
                             <BalanceCard
                                 onRedeem={() => setShowRedeemModal(true)}
-                                points={points}
+                                balance={tplBalance}
                                 nfts={nfts}
                             />
                             {!isDesktop && <NoticeBanner />}
@@ -300,10 +307,9 @@ export default function HomeScreen() {
             <TPLRedeemModal
                 visible={showRedeemModal}
                 onClose={() => setShowRedeemModal(false)}
-                points={Math.max(tplBalance !== null ? tplBalance : 0, points)}
+                points={tplBalance !== null ? tplBalance : 0}
                 currentTitle={user.tplTitle}
                 onUpdateTitle={handleTitleUpdate}
-                onSync={syncTPLToBlockchain}
             />
         </View>
     );

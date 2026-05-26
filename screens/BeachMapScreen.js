@@ -27,468 +27,62 @@ import { generateNFTAttributes } from "../utils/nftGenerator";
 import FlagIcon from "../components/FlagIcon";
 import ReportModal from '../components/ReportModal';
 import { LANGUAGE_LABELS } from "../constants/translations";
+import ENV from "../constants/env";
 const BLUE_GREY = "#607d8b";
 const BLUE_GREY_DARK = "#455a64";
 const BLUE_GREY_LIGHT = "#cfd8dc";
 const BLUE_GREY_BG = "rgba(96, 125, 139, 0.15)";
-const LIMA_BEACHES = [
-  {
-    id: 1,
-    name: "Playa Miramar",
-    zone: "Lima Norte",
-    district: "Ancón",
-    lat: -11.7695,
-    lng: -77.1758,
-    image: require("./Beach/data/PE-LIM-MIRAMAR.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 2,
-    name: "Playa Las Conchitas",
-    zone: "Lima Norte",
-    district: "Ancón",
-    lat: -11.7588,
-    lng: -77.1732,
-    image: require("./Beach/data/PE-LIM-LASCONCHITAS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 3,
-    name: "Playa Hermosa",
-    zone: "Lima Norte",
-    district: "Ancón",
-    lat: -11.7772,
-    lng: -77.1803,
-    image: require("./Beach/data/PE-LIM-PLAYAHERMOSA.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 4,
-    name: "Playa Chica",
-    zone: "Lima Norte",
-    district: "Santa Rosa",
-    lat: -11.8015,
-    lng: -77.1688,
-    image: require("./Beach/data/PE-LIM-PLAYACHICA.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 5,
-    name: "Playa Grande",
-    zone: "Lima Norte",
-    district: "Santa Rosa",
-    lat: -11.8082,
-    lng: -77.1655,
-    image: require("./Beach/data/PE-LIM-PLAYAGRANDE.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 6,
-    name: "Punta Roquitas",
-    zone: "Lima Centro",
-    district: "Miraflores",
-    lat: -12.1215,
-    lng: -77.0418,
-    image: require("./Beach/data/PE-LIM-PUNTAROQUITAS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 7,
-    name: "La Pampilla",
-    zone: "Lima Centro",
-    district: "Miraflores",
-    lat: -12.1234,
-    lng: -77.0402,
-    image: require("./Beach/data/PE-LIM-LAPAMPILLA.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 8,
-    name: "Waikiki",
-    zone: "Lima Centro",
-    district: "Miraflores",
-    lat: -12.1275,
-    lng: -77.0377,
-    image: require("./Beach/data/PE-LIM-WAIKIKI.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 9,
-    name: "Makaha",
-    zone: "Lima Centro",
-    district: "Miraflores",
-    lat: -12.1287,
-    lng: -77.0369,
-    image: require("./Beach/data/PE-LIM-MAKAHA.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 10,
-    name: "Redondo",
-    zone: "Lima Centro",
-    district: "Miraflores",
-    lat: -12.1315,
-    lng: -77.0352,
-    image: require("./Beach/data/PE-LIM-REDONDO.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 11,
-    name: "La Estrella",
-    zone: "Lima Centro",
-    district: "Miraflores",
-    lat: -12.1342,
-    lng: -77.0335,
-    image: require("./Beach/data/PE-LIM-LAESTRELLA.webp"),
-    clean: false,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 12,
-    name: "Las Cascadas",
-    zone: "Lima Centro",
-    district: "Barranco",
-    lat: -12.1438,
-    lng: -77.0289,
-    image: require("./Beach/data/PE-LIM-LASCASCADAS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 13,
-    name: "Barranquito",
-    zone: "Lima Centro",
-    district: "Barranco",
-    lat: -12.1472,
-    lng: -77.0275,
-    image: require("./Beach/data/PE-LIM-BARRANQUITO.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 14,
-    name: "Los Pavos",
-    zone: "Lima Centro",
-    district: "Barranco",
-    lat: -12.1505,
-    lng: -77.0263,
-    image: require("./Beach/data/PE-LIM-LOSPAVOS.webp"),
-    clean: false,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 15,
-    name: "Los Yuyos",
-    zone: "Lima Centro",
-    district: "Barranco",
-    lat: -12.1528,
-    lng: -77.0255,
-    image: require("./Beach/data/PE-LIM-LOSYUYOS.webp"),
-    clean: false,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 16,
-    name: "Las Sombrillas",
-    zone: "Lima Centro",
-    district: "Barranco",
-    lat: -12.1569,
-    lng: -77.0258,
-    image: require("./Beach/data/PE-LIM-LASSOMBRILLAS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 17,
-    name: "Agua Dulce",
-    zone: "Lima Centro",
-    district: "Chorrillos",
-    lat: -12.1612,
-    lng: -77.0266,
-    image: require("./Beach/data/PE-LIM-AGUADULCE.webp"),
-    clean: false,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 18,
-    name: "Pescadores",
-    zone: "Lima Centro",
-    district: "Chorrillos",
-    lat: -12.1645,
-    lng: -77.0278,
-    image: require("./Beach/data/PE-LIM-PESCADORES.webp"),
-    clean: false,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 19,
-    name: "La Herradura",
-    zone: "Lima Centro",
-    district: "Chorrillos",
-    lat: -12.1744,
-    lng: -77.0336,
-    image: require("./Beach/data/PE-LIM-LAHERRADURA.webp"),
-    clean: false,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 20,
-    name: "La Chira",
-    zone: "Lima Centro",
-    district: "Chorrillos",
-    lat: -12.1885,
-    lng: -77.0405,
-    image: require("./Beach/data/PE-LIM-LACHIRA.webp"),
-    clean: false,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 21,
-    name: "Playa Venecia",
-    zone: "Lima Sur",
-    district: "Villa El Salvador",
-    lat: -12.2355,
-    lng: -76.9758,
-    image: require("./Beach/data/PE-LIM-PLAYAVENECIA.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 22,
-    name: "Barlovento",
-    zone: "Lima Sur",
-    district: "Villa El Salvador",
-    lat: -12.2452,
-    lng: -76.9655,
-    image: require("./Beach/data/PE-LIM-BARLOVENTO.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 23,
-    name: "San Pedro",
-    zone: "Lima Sur",
-    district: "Lurín",
-    lat: -12.2685,
-    lng: -76.9248,
-    image: require("./Beach/data/PE-LIM-SANPEDRO.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 24,
-    name: "Arica",
-    zone: "Lima Sur",
-    district: "Lurín",
-    lat: -12.2785,
-    lng: -76.9125,
-    image: require("./Beach/data/PE-LIM-ARICA.webp"),
-    clean: false,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 25,
-    name: "Los Pulpos",
-    zone: "Lima Sur",
-    district: "Lurín",
-    lat: -12.2882,
-    lng: -76.9015,
-    image: require("./Beach/data/PE-LIM-LOSPULPUS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 26,
-    name: "El Silencio",
-    zone: "Sur Chico",
-    district: "Punta Hermosa",
-    lat: -12.3153,
-    lng: -76.8364,
-    image: require("./Beach/data/PE-LIM-ELSILENCIO.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 27,
-    name: "Caballeros",
-    zone: "Sur Chico",
-    district: "Punta Hermosa",
-    lat: -12.3297,
-    lng: -76.8319,
-    image: require("./Beach/data/PE-LIM-PLAYACABALLEROS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 28,
-    name: "Señoritas",
-    zone: "Sur Chico",
-    district: "Punta Hermosa",
-    lat: -12.3315,
-    lng: -76.8292,
-    image: require("./Beach/data/PE-LIM-PLAYASENORITAS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 29,
-    name: "Los Pulpos",
-    zone: "Sur Chico",
-    district: "Punta Hermosa",
-    lat: -12.42,
-    lng: -76.75,
-    image: require("./Beach/data/PE-LIM-LOSPULPUS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 30,
-    name: "Punta Negra",
-    zone: "Sur Chico",
-    district: "Punta Negra",
-    lat: -12.365,
-    lng: -76.795,
-    image: require("./Beach/data/PE-LIM-PUNTAROQUITAS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 31,
-    name: "San Bartolo",
-    zone: "Sur Chico",
-    district: "San Bartolo",
-    lat: -12.383,
-    lng: -76.782,
-    image: require("./Beach/data/PE-LIM-BARRANQUITO.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 32,
-    name: "Santa María",
-    zone: "Sur Chico",
-    district: "Santa María",
-    lat: -12.405,
-    lng: -76.767,
-    image: require("./Beach/data/PE-LIM-SANPEDRO.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 33,
-    name: "Naplo",
-    zone: "Sur Grande",
-    district: "Pucusana",
-    lat: -12.45,
-    lng: -76.72,
-    image: require("./Beach/data/PE-LIM-LASSOMBRILLAS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 34,
-    name: "Pucusana",
-    zone: "Sur Grande",
-    district: "Pucusana",
-    lat: -12.48,
-    lng: -76.68,
-    image: require("./Beach/data/PE-LIM-PLAYASENORITAS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 35,
-    name: "Asia",
-    zone: "Sur Grande",
-    district: "Pucusana",
-    lat: -12.52,
-    lng: -76.65,
-    image: require("./Beach/data/PE-LIM-LOSPAVOS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 36,
-    name: "Cerro Azul",
-    zone: "Sur Grande",
-    district: "Cerro Azul",
-    lat: -12.55,
-    lng: -76.62,
-    image: require("./Beach/data/PE-LIM-PLAYACABALLEROS.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 37,
-    name: "Puerto Viejo",
-    zone: "Sur Grande",
-    district: "Cerro Azul",
-    lat: -12.58,
-    lng: -76.59,
-    image: require("./Beach/data/PE-LIM-PLAYAHERMOSA.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-  {
-    id: 38,
-    name: "Tuquillo",
-    zone: "Sur Grande",
-    district: "Cerro Azul",
-    lat: -12.61,
-    lng: -76.56,
-    image: require("./Beach/data/PE-LIM-AGUADULCE.webp"),
-    clean: true,
-    people: 0,
-    country: "pe",
-  },
-];
+const BEACH_IMAGES = {
+  1: require("./Beach/data/PE-LIM-MIRAMAR.webp"),
+  2: require("./Beach/data/PE-LIM-LASCONCHITAS.webp"),
+  3: require("./Beach/data/PE-LIM-PLAYAHERMOSA.webp"),
+  4: require("./Beach/data/PE-LIM-PLAYACHICA.webp"),
+  5: require("./Beach/data/PE-LIM-PLAYAGRANDE.webp"),
+  6: require("./Beach/data/PE-LIM-PUNTAROQUITAS.webp"),
+  7: require("./Beach/data/PE-LIM-LAPAMPILLA.webp"),
+  8: require("./Beach/data/PE-LIM-WAIKIKI.webp"),
+  9: require("./Beach/data/PE-LIM-MAKAHA.webp"),
+  10: require("./Beach/data/PE-LIM-REDONDO.webp"),
+  11: require("./Beach/data/PE-LIM-LAESTRELLA.webp"),
+  12: require("./Beach/data/PE-LIM-LASCASCADAS.webp"),
+  13: require("./Beach/data/PE-LIM-BARRANQUITO.webp"),
+  14: require("./Beach/data/PE-LIM-LOSPAVOS.webp"),
+  15: require("./Beach/data/PE-LIM-LOSYUYOS.webp"),
+  16: require("./Beach/data/PE-LIM-LASSOMBRILLAS.webp"),
+  17: require("./Beach/data/PE-LIM-AGUADULCE.webp"),
+  18: require("./Beach/data/PE-LIM-PESCADORES.webp"),
+  19: require("./Beach/data/PE-LIM-LAHERRADURA.webp"),
+  20: require("./Beach/data/PE-LIM-LACHIRA.webp"),
+  21: require("./Beach/data/PE-LIM-PLAYAVENECIA.webp"),
+  22: require("./Beach/data/PE-LIM-BARLOVENTO.webp"),
+  23: require("./Beach/data/PE-LIM-SANPEDRO.webp"),
+  24: require("./Beach/data/PE-LIM-ARICA.webp"),
+  25: require("./Beach/data/PE-LIM-LOSPULPUS.webp"),
+  26: require("./Beach/data/PE-LIM-ELSILENCIO.webp"),
+  27: require("./Beach/data/PE-LIM-PLAYACABALLEROS.webp"),
+  28: require("./Beach/data/PE-LIM-PLAYASENORITAS.webp"),
+  29: require("./Beach/data/PE-LIM-LOSPULPUS.webp"),
+  30: require("./Beach/data/PE-LIM-PUNTAROQUITAS.webp"),
+  31: require("./Beach/data/PE-LIM-BARRANQUITO.webp"),
+  32: require("./Beach/data/PE-LIM-SANPEDRO.webp"),
+  33: require("./Beach/data/PE-LIM-LASSOMBRILLAS.webp"),
+  34: require("./Beach/data/PE-LIM-PLAYASENORITAS.webp"),
+  35: require("./Beach/data/PE-LIM-LOSPAVOS.webp"),
+  36: require("./Beach/data/PE-LIM-PLAYACABALLEROS.webp"),
+  37: require("./Beach/data/PE-LIM-PLAYAHERMOSA.webp"),
+  38: require("./Beach/data/PE-LIM-AGUADULCE.webp"),
+  // Nuevas playas peruanas y duplicado
+  83: require("./Beach/data/PE-LIM-PLAYASENORITAS.webp"), // Punta Negra
+  84: require("./Beach/data/PE-LIM-ELSILENCIO.webp"), // San Bartolo
+  85: require("./Beach/data/PE-LIM-PLAYACABALLEROS.webp"), // Santa María
+  86: require("./Beach/data/PE-LIM-PLAYAHERMOSA.webp"), // Naplo
+  87: require("./Beach/data/PE-LIM-PESCADORES.webp"), // Pucusana
+  88: require("./Beach/data/PE-LIM-AGUADULCE.webp"), // Asia
+  89: require("./Beach/data/PE-LIM-ARICA.webp"), // Cerro Azul
+  90: require("./Beach/data/PE-LIM-LAHERRADURA.webp"), // Puerto Viejo
+  91: require("./Beach/data/PE-LIM-WAIKIKI.webp"), // Tuquillo
+  92: require("./Beach/data/PE-LIM-LOSPULPUS.webp") // Los Pulpos (Sur Chico)
+};
 const LIMA_CENTER = { lat: -12.12, lng: -77.03 };
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371;
@@ -608,7 +202,7 @@ const BeachCard = ({ beach, isDark, onPress, onReportPress, t }) => {
             <View style={{ flexDirection: 'row', gap: rs(8) }}>
               <TouchableOpacity
                 onPress={() => {
-                  const url = `https://www.google.com/maps/search/?api=1&query=${beach.lat},${beach.lng}`;
+                  const url = beach.mapUrl || `https://www.google.com/maps/search/?api=1&query=${beach.lat},${beach.lng}`;
                   if (Platform.OS !== "web")
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   Linking.openURL(url);
@@ -624,7 +218,7 @@ const BeachCard = ({ beach, isDark, onPress, onReportPress, t }) => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   }
                   // Action for report
-                  if(onReportPress) onReportPress(beach);
+                  if (onReportPress) onReportPress(beach);
                 }}
                 style={[styles.mapIconBtn, { backgroundColor: "#10b981" }]}
               >
@@ -669,13 +263,60 @@ export default function BeachMapScreen({ navigation }) {
   const [selectedCleanliness, setSelectedCleanliness] = useState('all');
   const [showCelebration, setShowCelebration] = useState(false);
   const [selectedBeachForReport, setSelectedBeachForReport] = useState(null);
-  
+
   useEffect(() => {
     if (language && LANGUAGE_TO_ZONE[language]) {
       setSelectedZone(LANGUAGE_TO_ZONE[language]);
     }
   }, [language]);
   const [lastUnlockedNFT, setLastUnlockedNFT] = useState(null);
+
+  const [beachesData, setBeachesData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const API_URL = ENV.API_BASE_URL;
+
+  useEffect(() => {
+    const fetchBeaches = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/beaches`);
+        const result = await response.json();
+
+        if (result.success && result.beaches) {
+          const mappedBeaches = result.beaches.map(b => {
+            return {
+              id: b.id || b._id,
+              name: b.name,
+              zone: b.zone,
+              district: b.district,
+              lat: b.lat,
+              lng: b.lng,
+              clean: b.is_clean,
+              people: b.people_cleaning,
+              country: b.country_code,
+              orderIndex: b.orderIndex || 999,
+              mapUrl: b.mapUrl,
+              image: BEACH_IMAGES[b.id] || require("./Beach/data/PE-LIM-MIRAMAR.webp")
+            };
+          });
+          // Ordenar por orderIndex para respetar el orden manual
+          mappedBeaches.sort((a, b) => a.orderIndex - b.orderIndex);
+          setBeachesData(mappedBeaches);
+        } else {
+          console.error("Error en respuesta del backend de Python:", result);
+          setBeachesData([]);
+        }
+      } catch (error) {
+        console.error("Error conectando al backend en Python:", error);
+        setBeachesData([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchBeaches();
+  }, []);
+
   const [suggestions, setSuggestions] = useState([]);
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
@@ -694,7 +335,7 @@ export default function BeachMapScreen({ navigation }) {
     "map_zone_south_chico",
     "map_zone_south_grande",
   ];
-  const filteredBeaches = LIMA_BEACHES.filter((beach) => {
+  const filteredBeaches = beachesData.filter((beach) => {
     const matchesSearch =
       beach.name.toLowerCase().includes(search.toLowerCase()) ||
       beach.district.toLowerCase().includes(search.toLowerCase()) ||
@@ -706,12 +347,13 @@ export default function BeachMapScreen({ navigation }) {
       selectedZone === "map_all_zones" ||
       zoneMapping[beach.zone] === selectedZone;
     if (!search && selectedZone === "map_all_zones") {
-      const preferredCountry = LANGUAGE_LABELS[language]?.code;
-      if (preferredCountry) {
-        matchesZone = beach.country === preferredCountry;
+      const preferredCountry = LANGUAGE_LABELS[language]?.code?.toLowerCase();
+      const beachCountry = beach.country?.toLowerCase();
+      if (preferredCountry && beachCountry) {
+        matchesZone = beachCountry === preferredCountry;
       }
     }
-    
+
     // Cleanliness filtering
     let matchesCleanliness = true;
     if (selectedCleanliness === 'limpio') {
@@ -732,12 +374,12 @@ export default function BeachMapScreen({ navigation }) {
     const searchLower = text.toLowerCase();
     const suggestionSet = new Set();
     const maxSuggestions = 5;
-    LIMA_BEACHES.forEach((beach) => {
+    beachesData.forEach((beach) => {
       if (beach.name.toLowerCase().includes(searchLower)) {
         suggestionSet.add(JSON.stringify({ type: 'beach', text: beach.name, beach }));
       }
     });
-    LIMA_BEACHES.forEach((beach) => {
+    beachesData.forEach((beach) => {
       if (beach.district.toLowerCase().includes(searchLower)) {
         suggestionSet.add(JSON.stringify({ type: 'district', text: beach.district }));
       }
@@ -927,101 +569,101 @@ export default function BeachMapScreen({ navigation }) {
             </TouchableOpacity>
 
             {isDropdownVisible && (
-                <View 
-                  style={[
-                    styles.githubModal, 
-                    { 
-                      position: 'absolute',
-                      top: rs(40),
-                      left: SPACING.md,
-                      zIndex: 1000,
-                      backgroundColor: isDark ? 'rgba(13, 58, 77, 0.98)' : '#ffffff', 
-                      borderColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' 
-                    }
-                  ]}
-                >
-                  {/* Header */}
-                  <View style={[styles.githubModalHeader, { borderBottomColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' }]}>
-                    <Text style={[styles.githubModalTitle, { color: textColor }]}>
-                      Cambiar zona/suciedad
-                    </Text>
-                    <TouchableOpacity onPress={() => setDropdownVisible(false)} style={{ padding: rs(4) }}>
-                      <Ionicons name="close" size={rs(20)} color={subTextColor} />
-                    </TouchableOpacity>
-                  </View>
+              <View
+                style={[
+                  styles.githubModal,
+                  {
+                    position: 'absolute',
+                    top: rs(40),
+                    left: SPACING.md,
+                    zIndex: 1000,
+                    backgroundColor: isDark ? 'rgba(13, 58, 77, 0.98)' : '#ffffff',
+                    borderColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)'
+                  }
+                ]}
+              >
+                {/* Header */}
+                <View style={[styles.githubModalHeader, { borderBottomColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' }]}>
+                  <Text style={[styles.githubModalTitle, { color: textColor }]}>
+                    Cambiar zona/suciedad
+                  </Text>
+                  <TouchableOpacity onPress={() => setDropdownVisible(false)} style={{ padding: rs(4) }}>
+                    <Ionicons name="close" size={rs(20)} color={subTextColor} />
+                  </TouchableOpacity>
+                </View>
 
-                  {/* Search Input */}
-                  <View style={styles.githubSearchContainer}>
-                    <View style={[styles.githubSearchBox, { backgroundColor: isDark ? 'rgba(0, 0, 0, 0.2)' : '#f1f5f9', borderColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' }]}>
-                      <Ionicons name="search" size={rs(16)} color={subTextColor} />
-                      <TextInput
-                        style={[styles.githubSearchInput, { color: textColor }]}
-                        placeholder={`Buscar ${activeTab}...`}
-                        placeholderTextColor={subTextColor}
-                        value={dropdownSearch}
-                        onChangeText={setDropdownSearch}
-                      />
-                    </View>
-                  </View>
-
-                  {/* Tabs */}
-                  <View style={[styles.githubTabs, { borderBottomColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' }]}>
-                    <TouchableOpacity 
-                      style={[styles.githubTab, activeTab === 'zona' && { borderBottomColor: '#0ea5e9' }]} 
-                      onPress={() => { setActiveTab('zona'); setDropdownSearch(''); }}
-                    >
-                      <Text style={[styles.githubTabText, { color: activeTab === 'zona' ? textColor : subTextColor, fontWeight: activeTab === 'zona' ? '600' : '400' }]}>
-                        Zona
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[styles.githubTab, activeTab === 'suciedad' && { borderBottomColor: '#0ea5e9' }]} 
-                      onPress={() => { setActiveTab('suciedad'); setDropdownSearch(''); }}
-                    >
-                      <Text style={[styles.githubTabText, { color: activeTab === 'suciedad' ? textColor : subTextColor, fontWeight: activeTab === 'suciedad' ? '600' : '400' }]}>
-                        Suciedad
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* List */}
-                  <View style={{ maxHeight: rs(250) }}>
-                    <FlatList
-                      data={
-                        activeTab === 'zona' 
-                        ? zones.filter(z => t(z).toLowerCase().includes(dropdownSearch.toLowerCase())).map(z => ({ id: z, label: t(z) }))
-                        : [
-                            { id: 'all', label: 'Todas' },
-                            { id: 'limpio', label: 'Limpio' },
-                            { id: 'sucio', label: 'Sucio' },
-                            { id: 'muy_sucio', label: 'Muy sucio' }
-                          ].filter(s => s.label.toLowerCase().includes(dropdownSearch.toLowerCase()))
-                      }
-                      keyExtractor={(item) => item.id}
-                      renderItem={({item}) => {
-                        const isSelected = activeTab === 'zona' ? selectedZone === item.id : selectedCleanliness === item.id;
-                        return (
-                          <TouchableOpacity 
-                            style={[styles.githubListItem, { borderBottomColor: isDark ? 'rgba(96, 125, 139, 0.15)' : 'rgba(226, 232, 240, 0.5)' }]}
-                            onPress={() => {
-                              if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              if (activeTab === 'zona') setSelectedZone(item.id);
-                              else setSelectedCleanliness(item.id);
-                              setDropdownVisible(false);
-                            }}
-                          >
-                            <View style={{ width: rs(24), alignItems: 'center' }}>
-                              {isSelected && <Ionicons name="checkmark" size={rs(16)} color={textColor} />}
-                            </View>
-                            <Text style={[styles.githubListItemText, { color: textColor, fontWeight: isSelected ? '600' : '400' }]}>
-                              {item.label}
-                            </Text>
-                          </TouchableOpacity>
-                        )
-                      }}
+                {/* Search Input */}
+                <View style={styles.githubSearchContainer}>
+                  <View style={[styles.githubSearchBox, { backgroundColor: isDark ? 'rgba(0, 0, 0, 0.2)' : '#f1f5f9', borderColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' }]}>
+                    <Ionicons name="search" size={rs(16)} color={subTextColor} />
+                    <TextInput
+                      style={[styles.githubSearchInput, { color: textColor }]}
+                      placeholder={`Buscar ${activeTab}...`}
+                      placeholderTextColor={subTextColor}
+                      value={dropdownSearch}
+                      onChangeText={setDropdownSearch}
                     />
                   </View>
                 </View>
+
+                {/* Tabs */}
+                <View style={[styles.githubTabs, { borderBottomColor: isDark ? 'rgba(96, 125, 139, 0.3)' : 'rgba(226, 232, 240, 1)' }]}>
+                  <TouchableOpacity
+                    style={[styles.githubTab, activeTab === 'zona' && { borderBottomColor: '#0ea5e9' }]}
+                    onPress={() => { setActiveTab('zona'); setDropdownSearch(''); }}
+                  >
+                    <Text style={[styles.githubTabText, { color: activeTab === 'zona' ? textColor : subTextColor, fontWeight: activeTab === 'zona' ? '600' : '400' }]}>
+                      Zona
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.githubTab, activeTab === 'suciedad' && { borderBottomColor: '#0ea5e9' }]}
+                    onPress={() => { setActiveTab('suciedad'); setDropdownSearch(''); }}
+                  >
+                    <Text style={[styles.githubTabText, { color: activeTab === 'suciedad' ? textColor : subTextColor, fontWeight: activeTab === 'suciedad' ? '600' : '400' }]}>
+                      Suciedad
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* List */}
+                <View style={{ maxHeight: rs(250) }}>
+                  <FlatList
+                    data={
+                      activeTab === 'zona'
+                        ? zones.filter(z => t(z).toLowerCase().includes(dropdownSearch.toLowerCase())).map(z => ({ id: z, label: t(z) }))
+                        : [
+                          { id: 'all', label: 'Todas' },
+                          { id: 'limpio', label: 'Limpio' },
+                          { id: 'sucio', label: 'Sucio' },
+                          { id: 'muy_sucio', label: 'Muy sucio' }
+                        ].filter(s => s.label.toLowerCase().includes(dropdownSearch.toLowerCase()))
+                    }
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => {
+                      const isSelected = activeTab === 'zona' ? selectedZone === item.id : selectedCleanliness === item.id;
+                      return (
+                        <TouchableOpacity
+                          style={[styles.githubListItem, { borderBottomColor: isDark ? 'rgba(96, 125, 139, 0.15)' : 'rgba(226, 232, 240, 0.5)' }]}
+                          onPress={() => {
+                            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            if (activeTab === 'zona') setSelectedZone(item.id);
+                            else setSelectedCleanliness(item.id);
+                            setDropdownVisible(false);
+                          }}
+                        >
+                          <View style={{ width: rs(24), alignItems: 'center' }}>
+                            {isSelected && <Ionicons name="checkmark" size={rs(16)} color={textColor} />}
+                          </View>
+                          <Text style={[styles.githubListItemText, { color: textColor, fontWeight: isSelected ? '600' : '400' }]}>
+                            {item.label}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    }}
+                  />
+                </View>
+              </View>
             )}
           </View>
         </SafeAreaView>
@@ -1037,12 +679,12 @@ export default function BeachMapScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
           <View style={{ width: cardWidth }}>
-            <BeachCard 
-              beach={item} 
-              isDark={isDark} 
-              onPress={handleBeachPress} 
+            <BeachCard
+              beach={item}
+              isDark={isDark}
+              onPress={handleBeachPress}
               onReportPress={(b) => setSelectedBeachForReport(b)}
-              t={t} 
+              t={t}
             />
           </View>
         )}
@@ -1062,10 +704,10 @@ export default function BeachMapScreen({ navigation }) {
           </View>
         }
       />
-      <ReportModal 
-        visible={!!selectedBeachForReport} 
-        beach={selectedBeachForReport} 
-        onClose={() => setSelectedBeachForReport(null)} 
+      <ReportModal
+        visible={!!selectedBeachForReport}
+        beach={selectedBeachForReport}
+        onClose={() => setSelectedBeachForReport(null)}
       />
     </View>
   );

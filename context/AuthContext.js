@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import { DeviceEventEmitter } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hashDrawing, verifyDrawing, hashExportPassword, obfuscateData, deobfuscateData, encryptData, decryptData } from '../utils/crypto';
+import ENV from '../constants/env';
 const AuthContext = createContext(null);
 const KEYS = {
     ACCOUNT: '@tpl_account_data',
@@ -41,7 +42,69 @@ export function AuthProvider({ children }) {
     const [isFirstTime, setIsFirstTime] = useState(true);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [accountId, setAccountId] = useState(null);
+    const [mongoUserId, setMongoUserId] = useState(null);
     const [username, setUsername] = useState('');
+
+    const clearLocalAccount = useCallback(async () => {
+        try {
+            console.log('🧹 Wiping all local TPL account and game data...');
+            await AsyncStorage.multiRemove([
+                KEYS.ACCOUNT,
+                KEYS.SESSION,
+                KEYS.DRAWING_HASH,
+                KEYS.PASSWORD_HASH,
+                KEYS.PROFILE,
+                KEYS.USERNAME,
+                KEYS.REGISTRATION_DATE,
+                '@tpl_game_points',
+                '@tpl_game_items',
+                '@tpl_game_nfts',
+                '@tpl_game_user_meta',
+                '@tpl_game_cleanup_history'
+            ]);
+            setIsAuthenticated(false);
+            setIsFirstTime(true);
+            setAccountId(null);
+            setMongoUserId(null);
+            setUsername('');
+            
+            // Emit global event to notify GameContext and other components
+            DeviceEventEmitter.emit('TPL_ACCOUNT_IMPORTED');
+        } catch (e) {
+            console.warn('Wipe local account error:', e);
+        }
+    }, []);
+
+    // Background session/account existence check
+    useEffect(() => {
+        if (!mongoUserId) return;
+        
+        let intervalId;
+        const checkAccountStatus = async () => {
+            try {
+                const apiUrl = ENV.API_BASE_URL;
+                const response = await fetch(`${apiUrl}/api/users/status/${mongoUserId}`);
+                if (response.status === 404) {
+                    console.log('⚠️ User account deleted on server. Logging out and resetting app...');
+                    await clearLocalAccount();
+                }
+            } catch (err) {
+                // Silently ignore temporary network errors
+                console.warn('Failed to verify user account status on server:', err.message);
+            }
+        };
+
+        // Run check initially
+        checkAccountStatus();
+
+        // Check every 7 seconds
+        intervalId = setInterval(checkAccountStatus, 7000);
+
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+        };
+    }, [mongoUserId, clearLocalAccount]);
+
     // Check existing account & session on mount
     useEffect(() => {
         (async () => {
@@ -57,6 +120,7 @@ export function AuthProvider({ children }) {
                     setIsFirstTime(false);
                     const parsed = JSON.parse(accountData);
                     setAccountId(parsed.accountId);
+                    setMongoUserId(parsed.mongoUserId || null);
                     setUsername(savedUsername || '');
                     // Check for active session ("cookie")
                     // MODIFIED: Even if session exists, we REQUIRE drawing on refresh for security
@@ -73,7 +137,7 @@ export function AuthProvider({ children }) {
             setIsLoading(false);
         })();
     }, []);
-    const register = useCallback(async (name, password, drawingData) => {
+    const register = useCallback(async (name, email, password, drawingData) => {
         try {
             // Capa extra de sanitización (Sanitization layer) para Prevenir Stored XSS
             const sanitizeString = (str) => {
@@ -87,10 +151,44 @@ export function AuthProvider({ children }) {
             const newAccountId = `0x${timestamp}${random}`.slice(0, 42).padEnd(42, '0');
             const drawingHashed = await hashDrawing(drawingData);
             const passwordHashed = await hashExportPassword(password);
+            
+            // ✅ Register user in backend API (MongoDB)
+            const apiUrl = ENV.API_BASE_URL;
+            const registerResponse = await fetch(`${apiUrl}/api/users/register`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: cleanName,
+                    email: email.trim(),
+                    password: password,
+                    initials: cleanName.substring(0, 2).toUpperCase(),
+                    avatar_url: null,
+                    tpl_title: null,
+                    points: 0,
+                    level: 1,
+                    total_scans: 0,
+                    bottle_scans: 0,
+                    can_scans: 0,
+                    has_changed_username: false,
+                    has_awarded_profile_visit: false,
+                }),
+            });
+
+            if (!registerResponse.ok) {
+                const errorData = await registerResponse.json().catch(() => ({}));
+                throw new Error(errorData.detail || `Backend error: ${registerResponse.status}`);
+            }
+
+            const backendData = await registerResponse.json();
+            console.log('✅ User registered in backend:', backendData.user_id);
+
             const accountData = {
                 accountId: newAccountId,
                 createdAt: new Date().toISOString(),
                 version: 2,
+                mongoUserId: backendData.user_id,
             };
             await Promise.all([
                 setSecureItem(KEYS.DRAWING_HASH, drawingHashed),
@@ -101,6 +199,7 @@ export function AuthProvider({ children }) {
                 AsyncStorage.setItem(KEYS.REGISTRATION_DATE, new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })),
             ]);
             setAccountId(newAccountId);
+            setMongoUserId(backendData.user_id);
             setUsername(cleanName);
             setIsFirstTime(false);
             setIsAuthenticated(true);
@@ -267,21 +366,84 @@ export function AuthProvider({ children }) {
             return null;
         }
     }, []);
+    const loginAdmin = useCallback(async (adminUser, adminEmail) => {
+        try {
+            const cleanName = adminUser.trim();
+            const cleanEmail = adminEmail.trim().toLowerCase();
+            const apiUrl = ENV.API_BASE_URL;
+            const response = await fetch(`${apiUrl}/api/users/admin-login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ username: cleanName, email: cleanEmail }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || `Error: ${response.status}`);
+            }
+
+            const backendData = await response.json();
+            const userDoc = backendData.user;
+            
+            // Set up local storage session
+            const newAccountId = `0xadmin${Date.now().toString(16)}`.slice(0, 42).padEnd(42, '0');
+            const accountData = {
+                accountId: newAccountId,
+                createdAt: new Date().toISOString(),
+                version: 2,
+                mongoUserId: userDoc._id,
+            };
+
+            const profileData = {
+                name: userDoc.username,
+                email: userDoc.email,
+                initials: userDoc.initials || 'AD',
+            };
+
+            await Promise.all([
+                AsyncStorage.setItem(KEYS.USERNAME, userDoc.username),
+                AsyncStorage.setItem(KEYS.ACCOUNT, JSON.stringify(accountData)),
+                AsyncStorage.setItem(KEYS.SESSION, 'true'),
+                AsyncStorage.setItem(KEYS.REGISTRATION_DATE, new Date().toLocaleDateString()),
+                AsyncStorage.setItem(KEYS.PROFILE, JSON.stringify(profileData)),
+                AsyncStorage.setItem('@tpl_game_user_meta', JSON.stringify(profileData))
+            ]);
+
+            setAccountId(newAccountId);
+            setMongoUserId(userDoc._id);
+            setUsername(userDoc.username);
+            setIsFirstTime(false);
+            setIsAuthenticated(true);
+
+            DeviceEventEmitter.emit('TPL_ACCOUNT_IMPORTED');
+
+            return { success: true };
+        } catch (e) {
+            console.error('Admin login error:', e);
+            return { success: false, error: e.message };
+        }
+    }, []);
     const value = useMemo(() => ({
         isLoading,
         isFirstTime,
         isAuthenticated,
         accountId,
+        mongoUserId,
         username,
         register,
         login,
+        loginAdmin,
         logout,
+        clearLocalAccount,
         verifySessionPassword,
         exportAccount,
         importAccount,
         saveProfile,
         loadProfile,
-    }), [isLoading, isFirstTime, isAuthenticated, accountId, username, register, login, logout, verifySessionPassword, exportAccount, importAccount, saveProfile, loadProfile]);
+        setUsername,
+    }), [isLoading, isFirstTime, isAuthenticated, accountId, mongoUserId, username, register, login, loginAdmin, logout, clearLocalAccount, verifySessionPassword, exportAccount, importAccount, saveProfile, loadProfile, setUsername]);
     return (
         <AuthContext.Provider value={value}>
             {children}

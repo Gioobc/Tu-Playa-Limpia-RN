@@ -9,11 +9,10 @@ import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
 import { rs, rf, rh, SPACING, RADIUS } from '../constants/responsive';
 import { BRAND, GRADIENTS } from '../constants/theme';
+import ENV from '../constants/env';
 
 // Backend API URL - CAMBIAR SEGÚN TU ENTORNO
-const API_URL = Platform.OS === 'web' 
-    ? 'http://localhost:8000' 
-    : 'http://192.168.1.100:8000'; // Cambiar IP a la de tu servidor
+const API_URL = ENV.API_BASE_URL;
 
 const REPORT_TYPES = [
     { id: 'general', title: 'Reporte General', subtitle: 'Situación común', icon: 'grid-outline' },

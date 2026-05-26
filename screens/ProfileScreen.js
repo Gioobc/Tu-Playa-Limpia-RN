@@ -112,7 +112,9 @@ export default function ProfileScreen({ navigation }) {
         });
         if (!result.canceled) {
             const base64Img = `data:image/jpeg;base64,${result.assets[0].base64}`;
-            updateUserProfile({ avatar: base64Img });
+            console.log('📸 Avatar image selected, size:', base64Img.length);
+            await updateUserProfile({ avatar: base64Img });
+            console.log('✅ Avatar updated in local state:', base64Img.substring(0, 50) + '...');
             showSuccess(t('profile_photo_updated'));
         }
         setShowImagePicker(false);
@@ -131,12 +133,14 @@ export default function ProfileScreen({ navigation }) {
         });
         if (!result.canceled) {
             const base64Img = `data:image/jpeg;base64,${result.assets[0].base64}`;
-            updateUserProfile({ avatar: base64Img });
+            console.log('📷 Avatar photo taken, size:', base64Img.length);
+            await updateUserProfile({ avatar: base64Img });
+            console.log('✅ Avatar updated in local state:', base64Img.substring(0, 50) + '...');
             showSuccess(t('profile_photo_updated'));
         }
         setShowImagePicker(false);
     };
-    const handleSaveName = () => {
+    const handleSaveName = async () => {
         if (user.hasChangedUsername) {
             Alert.alert(t('profile_name_change_denied'), t('profile_name_change_denied'));
             setIsEditingName(false);
@@ -152,13 +156,11 @@ export default function ProfileScreen({ navigation }) {
             return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        const { unlockedNFT } = updateUserProfile({ name: trimmedName });
+        await updateUserProfile({ name: trimmedName });
+        setNewName(trimmedName);
         setIsEditingName(false);
         showSuccess(t('profile_name_saved'));
-        if (unlockedNFT) {
-            setCelebrationMessage(`${t('celebration_thanks')}\n\n${t('celebration_nft_unlocked')}\n${unlockedNFT.title}\n\n${t('celebration_see_rewards')}`);
-            setShowCelebration(true);
-        }
+
     };
     const handleThemeChange = (mode) => {
         if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -511,6 +513,13 @@ export default function ProfileScreen({ navigation }) {
                         <View style={styles.infoContent}>
                             <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{t('profile_join_date')}</Text>
                             <Text style={[styles.infoValue, { color: colors.text }]}>{user.joinDate}</Text>
+                        </View>
+                    </GlassCard>
+                    <GlassCard variant="default" style={[styles.infoCard, { marginTop: SPACING.sm }]}>
+                        <Ionicons name="mail-outline" size={rs(20)} color={colors.accent} />
+                        <View style={styles.infoContent}>
+                            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{t('auth_email_placeholder')}</Text>
+                            <Text style={[styles.infoValue, { color: colors.text }]}>{user.email || '—'}</Text>
                         </View>
                     </GlassCard>
                     <GlassCard variant="default" style={[styles.infoCard, { marginTop: SPACING.sm }]}>
