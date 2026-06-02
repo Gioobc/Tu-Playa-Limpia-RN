@@ -21,6 +21,7 @@ import { BRAND } from "../constants/theme";
 import { rs, rf, SPACING, RADIUS } from "../constants/responsive";
 import { useGame } from '../context/GameContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import CelebrationModal from '../components/CelebrationModal';
 import { mintNFT } from "../utils/blockchain/missionNFT";
 import { generateNFTAttributes } from "../utils/nftGenerator";
@@ -255,6 +256,7 @@ export default function BeachMapScreen({ navigation }) {
   const { colors, shadows, isDark } = useTheme();
   const { unlockRegionNFT } = useGame();
   const { t, language } = useLanguage();
+  const { isAdmin } = useAuth();
   const [search, setSearch] = useState("");
   const [selectedZone, setSelectedZone] = useState("map_all_zones");
   const [isDropdownVisible, setDropdownVisible] = useState(false);
@@ -422,10 +424,13 @@ export default function BeachMapScreen({ navigation }) {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    const newNFT = unlockRegionNFT(beach.name, beach.image);
-    if (newNFT) {
-      setLastUnlockedNFT(newNFT);
-      setShowCelebration(true);
+    // Admin users do not receive region NFTs
+    if (!isAdmin) {
+      const newNFT = unlockRegionNFT(beach.name, beach.image);
+      if (newNFT) {
+        setLastUnlockedNFT(newNFT);
+        setShowCelebration(true);
+      }
     }
 
     // Navegar internamente a BeachDetailScreen, sin salir de la app

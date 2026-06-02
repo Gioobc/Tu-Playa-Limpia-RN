@@ -10,11 +10,11 @@ import ENV from '../constants/env'
 const WalletContext = createContext()
 
 const NETWORK = {
-  chainId: 57057,
-  chainIdHex: "0xDEE1",
-  chainName: "zkTanenbaum Testnet",
-  rpcUrl: "https://rpc-zk.tanenbaum.io/",
-  blockExplorerUrl: "https://explorer-zk.tanenbaum.io/",
+  chainId: 5700,
+  chainIdHex: "0x1644",
+  chainName: "Syscoin NEVM Testnet",
+  rpcUrl: "https://rpc.tanenbaum.io",
+  blockExplorerUrl: "https://explorer.tanenbaum.io/",
   nativeCurrency: {
     name: "TSYS",
     symbol: "TSYS",

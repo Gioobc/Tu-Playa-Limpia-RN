@@ -85,6 +85,7 @@ class UserBase(BaseModel):
     plastic_scans: Optional[int] = 0
     has_changed_username: Optional[bool] = False
     has_awarded_profile_visit: Optional[bool] = False
+    NFTs: Optional[list] = []
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=6)
@@ -416,7 +417,8 @@ async def register_user(user: UserCreate, background_tasks: BackgroundTasks):
         if existing:
             raise HTTPException(409, "El nombre de usuario ya está en uso")
 
-        user_data = user.dict(exclude={"password"})
+        # Excluir password y campos nulos para evitar conflictos con índices únicos sparse (como 'address')
+        user_data = user.dict(exclude={"password"}, exclude_none=True)
         user_data["_id"] = str(uuid.uuid4())
         user_data["password_hash"] = hash_password(user.password)
         user_data["join_date"] = datetime.utcnow().isoformat()
@@ -506,7 +508,7 @@ async def update_user(user_id: str, updates: dict):
         allowed_fields = {
             "avatar_url", "username", "email", "tpl_title", "points", "level",
             "total_scans", "bottle_scans", "can_scans", "plastic_scans", "has_changed_username",
-            "has_awarded_profile_visit", "initials", "address"
+            "has_awarded_profile_visit", "initials", "address", "NFTs"
         }
         
         # Filtrar solo campos permitidos

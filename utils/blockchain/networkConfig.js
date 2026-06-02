@@ -1,16 +1,16 @@
 import { ethers } from "ethers";
 export const NETWORK_CONFIG = {
-  chainId: 57057,
-  chainIdHex: "0xDEE1",
-  chainName: "zkTanenbaum Testnet",
+  chainId: 5700,
+  chainIdHex: "0x1644",
+  chainName: "Syscoin NEVM Testnet",
   nativeCurrency: {
     name: "TSYS",
     symbol: "TSYS",
     decimals: 18
   },
-  rpcUrl: "https://rpc-zk.tanenbaum.io/",
-  blockExplorerUrl: "https://explorer-zk.tanenbaum.io/",
-  blockExplorerUrls: ["https://explorer-zk.tanenbaum.io/"],
+  rpcUrl: "https://rpc.tanenbaum.io/",
+  blockExplorerUrl: "https://explorer.tanenbaum.io/",
+  blockExplorerUrls: ["https://explorer.tanenbaum.io/"],
 };
 export function getProvider() {
   if (!window.ethereum) {

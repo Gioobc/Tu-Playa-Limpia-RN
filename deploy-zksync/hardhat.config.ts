@@ -14,14 +14,13 @@ const config: HardhatUserConfig = {
     version: "0.8.20",
   },
   networks: {
-    zkTanenbaum: {
-      url: "https://rpc-zk.tanenbaum.io/",
-      ethNetwork: "https://rpc.tanenbaum.io",
-      zksync: true,
+    syscoinNevm: {
+      url: "https://rpc.tanenbaum.io",
       accounts: DEPLOYER_PRIVATE_KEY ? [DEPLOYER_PRIVATE_KEY] : [],
+      chainId: 5700,
     },
   },
-  defaultNetwork: "zkTanenbaum",
+  defaultNetwork: "syscoinNevm",
 };
 
 export default config;

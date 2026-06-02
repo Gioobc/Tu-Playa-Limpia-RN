@@ -161,7 +161,8 @@ export default function AuthScreen({ onAuthenticated }) {
             if (compareFingerprints(fp1, fp2)) {
                 hapticSuccess();
                 setStatusText(t('auth_creating_account'));
-                const result = await onRegister(regUsername, regEmail, regPassword, strokes);
+                // Intentar registrar con la wallet address si está conectada
+                const result = await onRegister(regUsername, regEmail, regPassword, strokes, walletAddress);
                 if (result.success) {
                     updateUserProfile({
                         name: regUsername,

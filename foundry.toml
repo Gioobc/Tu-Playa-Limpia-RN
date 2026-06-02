@@ -1,0 +1,14 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib", "node_modules"]
+
+# Remappings for Foundry
+remappings = [
+    "@openzeppelin/=node_modules/@openzeppelin/",
+    "forge-std/=lib/forge-std/src/",
+    "lib/openzeppelin-contracts/=lib/openzeppelin-contracts/"
+]
+
+[rpc_endpoints]
+syscoin_nevm = "https://rpc.tanenbaum.io"

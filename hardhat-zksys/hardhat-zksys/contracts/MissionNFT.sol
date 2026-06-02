@@ -12,6 +12,7 @@ contract MissionNFT is ERC721URIStorage, Ownable {
         tokenCounter = 0;
     }
 
+    /// @notice Permite al usuario completar una misión y mintear su propio NFT
     function completeMission(
         uint256 missionId,
         string memory tokenURI
@@ -25,5 +26,22 @@ contract MissionNFT is ERC721URIStorage, Ownable {
         _setTokenURI(tokenId, tokenURI);
 
         missionCompleted[missionId][msg.sender] = true;
+    }
+
+    /// @notice Minteo por admin/backend a favor de un usuario
+    function adminMint(
+        address recipient,
+        uint256 missionId,
+        string memory tokenURI
+    ) external onlyOwner {
+        require(!missionCompleted[missionId][recipient], "Mission already completed");
+
+        uint256 tokenId = tokenCounter;
+        tokenCounter++;
+
+        _safeMint(recipient, tokenId);
+        _setTokenURI(tokenId, tokenURI);
+
+        missionCompleted[missionId][recipient] = true;
     }
 }

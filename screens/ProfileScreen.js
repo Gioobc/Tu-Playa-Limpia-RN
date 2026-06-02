@@ -39,7 +39,7 @@ export default function ProfileScreen({ navigation }) {
     const { user, updateUserProfile, nfts, points, level, scannedItems, unlockNFT } = useGame();
     const { colors, shadows, isDark, themeMode, setDarkMode, setLightMode, setSystemMode, THEME_MODES } = useTheme();
     const { t, language, setLanguage, LANGUAGES, LANGUAGE_LABELS, isAutoMode } = useLanguage();
-    const { verifySessionPassword, exportAccount, mongoUserId, clearLocalAccount } = useAuth();
+    const { verifySessionPassword, exportAccount, mongoUserId, clearLocalAccount, isAdmin } = useAuth();
     const { address, connectMetaMask, connectPali, disconnectWallet } = useWallet();
     const [isEditingName, setIsEditingName] = useState(false);
     const [newName, setNewName] = useState(user.name);
@@ -64,8 +64,8 @@ export default function ProfileScreen({ navigation }) {
     // ── Milestone Checks ──
     useEffect(() => {
         const checkMilestones = async () => {
-            // Visit Profile NFT
-            if (user && !user.hasAwardedProfileVisit) {
+            // Visit Profile NFT - NOT for admin users
+            if (user && !user.hasAwardedProfileVisit && !isAdmin) {
                 try {
                     updateUserProfile({ hasAwardedProfileVisit: true });
                     const newNft = unlockNFT({
@@ -87,7 +87,7 @@ export default function ProfileScreen({ navigation }) {
         };
         const timer = setTimeout(checkMilestones, 1000);
         return () => clearTimeout(timer);
-    }, [user]);
+    }, [user, isAdmin]);
     const toastOpacity = useSharedValue(0);
     const toastY = useSharedValue(rs(-50));
     const showSuccess = (message) => {

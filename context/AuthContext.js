@@ -72,7 +72,7 @@ export function AuthProvider({ children }) {
             setMongoUserId(null);
             setUsername('');
             setIsAdmin(false);
-            
+
             // Emit global event to notify GameContext and other components
             DeviceEventEmitter.emit('TPL_ACCOUNT_IMPORTED');
         } catch (e) {
@@ -114,25 +114,24 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         (async () => {
             try {
-                const [drawingHash, sessionActive, accountData, savedUsername, savedAdminFlag] = await Promise.all([
+                const [drawingHash, sessionActive, accountData, savedUsername, adminFlag] = await Promise.all([
                     getSecureItem(KEYS.DRAWING_HASH),
                     AsyncStorage.getItem(KEYS.SESSION),
                     AsyncStorage.getItem(KEYS.ACCOUNT),
                     AsyncStorage.getItem(KEYS.USERNAME),
                     AsyncStorage.getItem(KEYS.ADMIN),
                 ]);
-                const isAdminSession = savedAdminFlag === 'true' || savedUsername === 'administrador';
+                // Admin flag se restaura si existe en storage (durante la misma sesión)
+                // Solo se borra al hacer logout explícito
                 if (accountData) {
                     const parsed = JSON.parse(accountData);
                     setAccountId(parsed.accountId);
                     setMongoUserId(parsed.mongoUserId || null);
                     setUsername(savedUsername || '');
                     setIsFirstTime(false);
-                    setIsAdmin(isAdminSession);
+                    setIsAdmin(adminFlag === 'true'); // Restaurar admin flag si existe
 
-                    if (isAdminSession && sessionActive === 'true') {
-                        setIsAuthenticated(true);
-                    } else if (drawingHash && sessionActive === 'true') {
+                    if (drawingHash && sessionActive === 'true') {
                         console.log('Session active, waiting for drawing unlock...');
                     }
                 } else {
@@ -147,7 +146,7 @@ export function AuthProvider({ children }) {
             setIsLoading(false);
         })();
     }, []);
-    const register = useCallback(async (name, email, password, drawingData) => {
+    const register = useCallback(async (name, email, password, drawingData, address = null) => {
         try {
             // Capa extra de sanitización (Sanitization layer) para Prevenir Stored XSS
             const sanitizeString = (str) => {
@@ -173,6 +172,7 @@ export function AuthProvider({ children }) {
                     username: cleanName,
                     email: email.trim(),
                     password: password,
+                    address: address, // Enviar la wallet address si existe
                     initials: cleanName.substring(0, 2).toUpperCase(),
                     avatar_url: null,
                     tpl_title: null,
@@ -246,10 +246,22 @@ export function AuthProvider({ children }) {
         }
     }, []);
     const logout = useCallback(async () => {
-        await AsyncStorage.setItem(KEYS.SESSION, 'false');
+        try {
+            await Promise.all([
+                AsyncStorage.setItem(KEYS.SESSION, 'false'),
+                AsyncStorage.removeItem(KEYS.ADMIN),
+            ]);
+        } catch (error) {
+            console.error('Logout cleanup error:', error);
+        }
+        // Si era admin, va a pantalla de bienvenida (no tiene firma digital)
+        // Si era usuario normal, va a firma digital (login mode)
+        if (isAdmin) {
+            setIsFirstTime(true); // Admin → pantalla de bienvenida
+        }
         setIsAuthenticated(false);
         setIsAdmin(false);
-    }, []);
+    }, [isAdmin]);
     const verifySessionPassword = useCallback(async (password) => {
         try {
             const storedHash = await getSecureItem(KEYS.PASSWORD_HASH);
@@ -475,7 +487,7 @@ export function AuthProvider({ children }) {
                 AsyncStorage.setItem(KEYS.USERNAME, userDoc.username),
                 AsyncStorage.setItem(KEYS.ACCOUNT, JSON.stringify(accountData)),
                 AsyncStorage.setItem(KEYS.SESSION, 'true'),
-                AsyncStorage.setItem(KEYS.ADMIN, 'true'),
+                AsyncStorage.setItem(KEYS.ADMIN, 'true'), // Guardar flag admin para persistir durante la sesión
                 AsyncStorage.setItem(KEYS.REGISTRATION_DATE, new Date().toLocaleDateString()),
                 AsyncStorage.setItem(KEYS.PROFILE, JSON.stringify(profileData)),
                 AsyncStorage.setItem('@tpl_game_user_meta', JSON.stringify(profileData))

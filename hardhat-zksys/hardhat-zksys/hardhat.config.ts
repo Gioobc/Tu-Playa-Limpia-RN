@@ -1,44 +1,47 @@
 import { config as dotenvConfig } from "dotenv";
 dotenvConfig();
 
-// ✅ Importamos solo el plugin de Ignition para deploys
-import "@nomicfoundation/hardhat-ignition";
-import { defineConfig } from "hardhat/config";
+import { HardhatUserConfig } from "hardhat/config";
+import "@nomicfoundation/hardhat-ethers";
+import "@nomicfoundation/hardhat-verify";
 
 const OWNER_PRIVATE_KEY = process.env.OWNER_PRIVATE_KEY;
 
-export default defineConfig({
-  // Ya no necesitamos hardhat-toolbox-mocha-ethers
-  plugins: [],
-
-  solidity: {
-    profiles: {
-      default: { version: "0.8.28" },
-      production: {
-        version: "0.8.28",
-        settings: { optimizer: { enabled: true, runs: 200 } },
-      },
-    },
-  },
+const config: HardhatUserConfig = {
+  solidity: "0.8.28",
 
   networks: {
-    // Redes simuladas de Hardhat
-    hardhatMainnet: { type: "edr-simulated", chainType: "l1" },
-    hardhatOp: { type: "edr-simulated", chainType: "op" },
-
-    // zkTanenbaum Testnet
-    zkTanenbaum_Testnet: {
-      type: "http",
-      chainId: 57057,
-      url: "https://rpc-zk.tanenbaum.io/",
+    syscoin_nevm_testnet: {
+      url: "https://rpc.tanenbaum.io/",
+      chainId: 5700,
       accounts: OWNER_PRIVATE_KEY ? [OWNER_PRIVATE_KEY] : [],
+    },
+
+    zkTanenbaum_Testnet: {
+      url: "https://rpc-zk.tanenbaum.io/",
+      chainId: 57057,
+      accounts: OWNER_PRIVATE_KEY ? [OWNER_PRIVATE_KEY] : [],
+      gasPrice: 400_000_000_000, // 400 Gwei, legacy type 0x0
+      gas: 5_000_000,
+      timeout: 120000,
     },
   },
 
-  paths: {
-    sources: "./contracts",
-    tests: "./test",
-    cache: "./cache",
-    artifacts: "./artifacts",
+  etherscan: {
+    apiKey: {
+      syscoin_nevm_testnet: "abc"
+    },
+    customChains: [
+      {
+        network: "syscoin_nevm_testnet",
+        chainId: 5700,
+        urls: {
+          apiURL: "https://explorer.tanenbaum.io/api",
+          browserURL: "https://explorer.tanenbaum.io"
+        }
+      }
+    ]
   },
-});
+};
+
+export default config;

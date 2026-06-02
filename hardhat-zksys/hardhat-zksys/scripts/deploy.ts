@@ -1,15 +1,17 @@
-import hre from "hardhat";
+import { ethers } from "hardhat";
 
 async function main() {
+  const [deployer] = await ethers.getSigners();
+  console.log("Desplegando con cuenta:", deployer.address);
+
+  // === Deploy MissionNFT ===
   console.log("🚀 Desplegando MissionNFT...");
-
-  // Ignition inyecta deploy a través de hre
-  const missionNFT = await (hre as any).deploy("MissionNFT", {
-    from: process.env.OWNER_PRIVATE_KEY,
-    args: [], // constructor args
-  });
-
-  console.log("✅ MissionNFT desplegado en:", missionNFT.address);
+  const MissionNFT = await ethers.getContractFactory("MissionNFT");
+  const missionNFT = await MissionNFT.deploy();
+  const deployMTx = missionNFT.deploymentTransaction();
+  console.log("TX hash:", deployMTx?.hash);
+  await missionNFT.waitForDeployment();
+  console.log("✅ MissionNFT desplegado en:", await missionNFT.getAddress());
 }
 
 main().catch((error) => {

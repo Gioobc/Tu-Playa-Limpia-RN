@@ -7,5 +7,5 @@
     "outDir": "dist",
     "resolveJsonModule": true
   },
-  "include": ["./deploy", "./hardhat.config.ts"]
+  "include": ["scripts", "./hardhat.config.ts"]
 }
