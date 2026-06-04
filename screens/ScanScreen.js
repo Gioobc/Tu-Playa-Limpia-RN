@@ -218,8 +218,11 @@ const PermissionScreen = ({ onRequestPermission, isDark }) => {
 const ROBOFLOW_API_KEY = ENV.ROBOFLOW_API_KEY;
 const ROBOFLOW_MODEL = ENV.ROBOFLOW_MODEL;
 const ROBOFLOW_URL = `https://serverless.roboflow.com/${ROBOFLOW_MODEL}`;
+// API de IA propia — api_ia.py corriendo en el servidor
+const AI_API_URL = ENV.AI_API_URL;        // e.g. http://192.168.100.45:5000
+const USE_OWN_AI = ENV.USE_OWN_AI;        // true = modelo propio, false = Roboflow
 const SCAN_INTERVAL_MS = 1500;
-const CONFIDENCE_THRESHOLD = 40;
+const CONFIDENCE_THRESHOLD = 30;          // % mínimo (30% con 2 épocas, subir a 60 tras 100)
 const CLASS_MAPPING = {
     'plastic-bottle': { type: 'bottle', labelKey: 'scan_label_plastic_bottle', points: 5, color: '#22c55e' },
     'bottle': { type: 'bottle', labelKey: 'scan_label_bottle', points: 5, color: '#22c55e' },
@@ -463,16 +466,15 @@ export default function ScanScreen() {
     const pulseStyle = useAnimatedStyle(() => ({
         opacity: pulseOpacity.value,
     }));
-    // Real-time scan function - calls Roboflow API directly
+    // Real-time scan function — usa modelo propio (api_ia.py) o Roboflow como fallback
     const performScan = async () => {
         if (!cameraRef.current || isScanning || !activeBeach) return;
-        // If locked, we are verifying. If not locked, we are searching.
         setIsScanning(true);
         try {
-            // Capture photo from camera
+            // Capturar foto de la cámara
             const photo = await cameraRef.current.takePictureAsync({
-                quality: 0.5,  // Lower quality for faster upload
-                base64: true,  // Need base64 for Roboflow API
+                quality: 0.5,
+                base64: true,
             });
             if (!photo || !photo.base64) {
                 console.log('No photo captured');
@@ -485,22 +487,54 @@ export default function ScanScreen() {
             if (base64Data.startsWith('data:')) {
                 base64Data = base64Data.split(',')[1];
             }
-            const response = await fetch(
-                `${ROBOFLOW_URL}?api_key=${ROBOFLOW_API_KEY}&confidence=${CONFIDENCE_THRESHOLD}&overlap=50`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: base64Data,
+
+            let apiPredictions = [];
+
+            if (USE_OWN_AI) {
+                // ── Modo: API propia (modelo YOLOv8 entrenado) ──────────────
+                try {
+                    const aiResponse = await fetch(`${AI_API_URL}/classify`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: base64Data,
+                        timeout: 10000,
+                    });
+                    if (aiResponse.ok) {
+                        const aiData = await aiResponse.json();
+                        // Normalizar al formato de Roboflow para reutilizar el resto del código
+                        apiPredictions = (aiData.predictions || []).map(p => ({
+                            class: p.class,
+                            confidence: p.confidence / 100, // convertir % → 0-1
+                            x: p.x,
+                            y: p.y,
+                            width: p.width,
+                            height: p.height,
+                        }));
+                        console.log(`[AI] Detectado: ${apiPredictions.map(p => p.class + ' ' + Math.round(p.confidence*100) + '%').join(', ') || 'nada'}`);
+                    } else {
+                        console.log('[AI] Error del servidor:', aiResponse.status);
+                    }
+                } catch (aiError) {
+                    console.log('[AI] No se pudo conectar al servidor de IA:', aiError.message);
                 }
-            );
-            if (!response.ok) {
-                console.log('Roboflow error:', response.status);
-                return;
+            } else {
+                // ── Modo: Roboflow (fallback) ───────────────────────────────
+                const response = await fetch(
+                    `${ROBOFLOW_URL}?api_key=${ROBOFLOW_API_KEY}&confidence=${CONFIDENCE_THRESHOLD}&overlap=50`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: base64Data,
+                    }
+                );
+                if (!response.ok) {
+                    console.log('Roboflow error:', response.status);
+                    return;
+                }
+                const data = await response.json();
+                apiPredictions = data.predictions || [];
             }
-            const data = await response.json();
-            let apiPredictions = data.predictions || [];
+
             const margin = 10;
             const imgW = photo.width;
             const imgH = photo.height;
