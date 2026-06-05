@@ -26,17 +26,20 @@
 
 deploy-zksync/.env
 
-# ──────────────────────────────────────────────
-# Dataset de imágenes (muy pesado — no subir a GitHub)
-# ──────────────────────────────────────────────
+# Datasets de imágenes y archivos zip (muy pesados — no subir a GitHub)
 dataset/
 dataset_split/
+dataset_balanced/
+dataset_balanced_split/
+dataset_raw/
 dataset.zip
 dataset (2).zip
 
-# Modelos base de YOLOv8 (se descargan automáticamente desde ultralytics.com)
-yolov8s.pt
-yolov8s-cls.pt
+# Modelos base y entrenados (archivos *.pt y carpeta runs)
+*.pt
+yolov8*.pt
+runs/
 
-# Resultados de detección (intento fallido, no necesario)
-runs/detect/
+# Archivos de caché de Python
+__pycache__/
+*.pyc

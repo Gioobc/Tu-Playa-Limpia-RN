@@ -65,24 +65,36 @@ export default function AdminViewScreen() {
         bottle_scans: 0,
         can_scans: 0,
         plastic_scans: 0,
+        total_nfts: 0,
         total_users: 0,
         total_reports: 0,
         total_beaches: 0,
     });
     const [loading, setLoading] = useState(true);
+    const [lastUpdated, setLastUpdated] = useState(null);
+    const [isLive, setIsLive] = useState(false);
 
-    const fetchStats = async () => {
-        setLoading(true);
+    const fetchStats = async (isPolling = false) => {
+        if (!isPolling) setLoading(true);
         try {
             const response = await fetch(`${API_URL}/api/admin/stats`);
             const data = await response.json();
             if (data.success) {
-                setStats(data.stats);
+                setStats(prevStats => {
+                    // Solo pulsar el indicador visual si los datos cambiaron realmente
+                    const changed = JSON.stringify(prevStats) !== JSON.stringify(data.stats);
+                    if (changed && isPolling) {
+                        setIsLive(true);
+                        setTimeout(() => setIsLive(false), 1200);
+                    }
+                    return data.stats;
+                });
+                setLastUpdated(new Date());
             }
         } catch (error) {
             console.error('Error fetching admin stats:', error);
         } finally {
-            setLoading(false);
+            if (!isPolling) setLoading(false);
         }
     };
 
@@ -311,7 +323,10 @@ export default function AdminViewScreen() {
     };
 
     useEffect(() => {
-        fetchStats();
+        fetchStats(false);
+        // Polling en tiempo real rápido (cada 3 segundos) para actualización inmediata
+        const interval = setInterval(() => fetchStats(true), 3000);
+        return () => clearInterval(interval);
     }, []);
 
     // Layout configuration
@@ -363,21 +378,33 @@ export default function AdminViewScreen() {
                             <Text style={[styles.title, { color: colors.text }]}>
                                 {language === 'es' ? 'Reporte de Impacto Ambiental' : 'Environmental Impact Report'}
                             </Text>
+                            {/* Indicador de datos en tiempo real */}
+                            <View style={styles.liveRow}>
+                                <View style={[styles.liveDot, { backgroundColor: isLive ? '#22c55e' : '#0d9488' }]} />
+                                <Text style={[styles.liveText, { color: colors.textMuted }]}>
+                                    {language === 'es' ? 'Datos en tiempo real' : 'Live data'}
+                                    {lastUpdated ? ` · ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                                </Text>
+                            </View>
                         </View>
-                        
+
                         <View style={styles.actionButtons}>
-                            <TouchableOpacity 
+                            <TouchableOpacity
+                                style={[styles.btnSecondary, { borderColor: isLight ? '#cbd5e1' : colors.border }]}
+                                onPress={() => fetchStats(true)}
+                            >
+                                <Ionicons name="refresh-outline" size={rs(16)} color={colors.text} style={styles.btnIcon} />
+                                <Text style={[styles.btnTextSecondary, { color: colors.text }]}>
+                                    {language === 'es' ? 'Actualizar' : 'Refresh'}
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
                                 style={[styles.btnSecondary, { borderColor: isLight ? '#cbd5e1' : colors.border }]}
                                 onPress={handleDownloadPDF}
                             >
                                 <Ionicons name="download-outline" size={rs(16)} color={colors.text} style={styles.btnIcon} />
                                 <Text style={[styles.btnTextSecondary, { color: colors.text }]}>
                                     {language === 'es' ? 'Descargar PDF' : 'Download PDF'}
-                                </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.btnPrimary}>
-                                <Text style={styles.btnTextPrimary}>
-                                    {language === 'es' ? 'Nueva Acción' : 'New Action'}
                                 </Text>
                             </TouchableOpacity>
                         </View>
@@ -395,7 +422,7 @@ export default function AdminViewScreen() {
                         />
                         <StatCard
                             icon="umbrella-outline"
-                            trendText={language === 'es' ? 'Registradas' : 'Registered'}
+                            trendText={language === 'es' ? 'Activas' : 'Active'}
                             trendColor="#0ea5e9"
                             label={language === 'es' ? 'Playas Intervenidas' : 'Beaches Cleaned'}
                             value={loading ? '...' : stats.total_beaches.toString()}
@@ -403,10 +430,10 @@ export default function AdminViewScreen() {
                         />
                         <StatCard
                             icon="cube-outline"
-                            trendText="+340 hoy"
+                            trendText={language === 'es' ? 'Acumulados' : 'All time'}
                             trendColor="#d4a574"
                             label={language === 'es' ? 'NFTs Otorgados' : 'NFTs Distributed'}
-                            value="1,822"
+                            value={loading ? '...' : stats.total_nfts.toLocaleString()}
                             delay={300}
                         />
                         <StatCard
@@ -414,7 +441,7 @@ export default function AdminViewScreen() {
                             trendText={language === 'es' ? 'Registrados' : 'Registered'}
                             trendColor="#22c55e"
                             label={language === 'es' ? 'Guardianes Activos' : 'Active Guardians'}
-                            value={loading ? '...' : stats.total_users.toString()}
+                            value={loading ? '...' : stats.total_users.toLocaleString()}
                             delay={400}
                         />
                     </View>
@@ -537,6 +564,21 @@ const styles = StyleSheet.create({
     title: {
         fontSize: rf(26),
         fontWeight: '800',
+    },
+    liveRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: rs(6),
+        gap: rs(6),
+    },
+    liveDot: {
+        width: rs(8),
+        height: rs(8),
+        borderRadius: rs(4),
+    },
+    liveText: {
+        fontSize: rf(11),
+        fontWeight: '600',
     },
     actionButtons: {
         flexDirection: 'row',

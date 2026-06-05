@@ -249,7 +249,11 @@ export const GameProvider = ({ children }) => {
             ...generatedData,
             ...nftData,
         };
-        setNfts(prev => [newNFT, ...prev]);
+        setNfts(prev => {
+            const updated = [newNFT, ...prev];
+            updateUserProfile({ NFTs: updated });
+            return updated;
+        });
         return newNFT;
     };
     const unlockRegionNFT = (regionName, regionImage) => {
@@ -274,7 +278,11 @@ export const GameProvider = ({ children }) => {
         setNfts(prev => prev.map(n => n.id === id ? { ...n, isNew: false } : n));
     };
     const markNFTClaimed = (id) => {
-        setNfts(prev => prev.map(n => n.id === id ? { ...n, claimed: true } : n));
+        setNfts(prev => {
+            const updated = prev.map(n => n.id === id ? { ...n, claimed: true } : n);
+            updateUserProfile({ NFTs: updated });
+            return updated;
+        });
     };
     const scanItem = (type, customPoints = null) => {
         const SCORING = { bottle: 5, can: 3, trash: 1 };
@@ -436,7 +444,11 @@ export const GameProvider = ({ children }) => {
             unlockRegionNFT,
             reloadGameState: loadGameState,
             claimNFT: (id, txHash) => {
-                setNfts(prev => prev.map(n => n.id === id ? { ...n, claimed: true, txHash } : n));
+                setNfts(prev => {
+                    const updated = prev.map(n => n.id === id ? { ...n, claimed: true, txHash } : n);
+                    updateUserProfile({ NFTs: updated });
+                    return updated;
+                });
             },
             markNFTSeen: (id) => {
                 setNfts(prev => prev.map(n => n.id === id ? { ...n, isNew: false } : n));

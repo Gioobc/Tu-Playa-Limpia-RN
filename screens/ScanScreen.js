@@ -657,13 +657,18 @@ export default function ScanScreen() {
             syncTPLToBlockchain(rewardPoints);
         }
 
-        // Persist to MongoDB
+        // Persist to MongoDB — include beach info so we can count intervened beaches correctly
         const updateData = {
             total_scans: (scannedItems.total || 0) + 1,
             bottle_scans: scannedItems.bottles + (mainType.toLowerCase().includes('bottle') ? 1 : 0),
             can_scans: scannedItems.cans + (mainType.toLowerCase().includes('can') ? 1 : 0),
             plastic_scans: (scannedItems.plastic || 0) + (mainType.toLowerCase().includes('plastic') ? 1 : 0),
-            points: (points || 0) + rewardPoints
+            points: (points || 0) + rewardPoints,
+            // Beach association: stores the beach where this scan happened.
+            // scanned_beach_id is a single value (last beach scanned);
+            // scanned_beaches is an array we append to via the backend endpoint.
+            last_scanned_beach_id:   activeBeach?.id   || null,
+            last_scanned_beach_name: activeBeach?.name || null,
         };
         
         console.log(`[ScanScreen] Syncing to MongoDB (ID: ${mongoUserId}):`, updateData);
@@ -671,6 +676,20 @@ export default function ScanScreen() {
             console.warn("[ScanScreen] No mongoUserId found, sync might fail");
         }
         updateUserProfile(updateData);
+
+        // Registrar la playa como intervenida (usa $addToSet para evitar duplicados).
+        // Esto es lo que hace que el dashboard cuente solo playas CON escaneos.
+        if (mongoUserId && activeBeach?.id) {
+            fetch(`${ENV.API_BASE_URL}/api/users/${mongoUserId}/scan-beach`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    beach_id:   activeBeach.id,
+                    beach_name: activeBeach.name || activeBeach.id,
+                }),
+            }).catch(err => console.warn('[ScanScreen] scan-beach sync error:', err.message));
+        }
+
         
         // Skip celebration for admin, show only for normal users
         if (!isAdmin) {

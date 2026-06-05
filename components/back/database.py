@@ -259,20 +259,21 @@ class MongoDBConnection:
         """Obtener estadísticas globales de escaneos y conteos para administración"""
         try:
             user_collection = self.get_user_collection()
-            
-            # Sumar scans de todos los usuarios
+
+            # Sumar scans y contar NFTs otorgados (longitud del array NFTs de cada usuario)
             pipeline = [
                 {
                     "$group": {
                         "_id": None,
-                        "total_scans": {"$sum": {"$ifNull": ["$total_scans", 0]}},
-                        "bottle_scans": {"$sum": {"$ifNull": ["$bottle_scans", 0]}},
-                        "can_scans": {"$sum": {"$ifNull": ["$can_scans", 0]}},
-                        "plastic_scans": {"$sum": {"$ifNull": ["$plastic_scans", 0]}}
+                        "total_scans":   {"$sum": {"$ifNull": ["$total_scans", 0]}},
+                        "bottle_scans":  {"$sum": {"$ifNull": ["$bottle_scans", 0]}},
+                        "can_scans":     {"$sum": {"$ifNull": ["$can_scans", 0]}},
+                        "plastic_scans": {"$sum": {"$ifNull": ["$plastic_scans", 0]}},
+                        "total_nfts":    {"$sum": {"$size": {"$ifNull": ["$NFTs", []]}}}
                     }
                 }
             ]
-            
+
             results = list(user_collection.aggregate(pipeline))
             stats = {}
             if results:
@@ -283,21 +284,35 @@ class MongoDBConnection:
                     "total_scans": 0,
                     "bottle_scans": 0,
                     "can_scans": 0,
-                    "plastic_scans": 0
+                    "plastic_scans": 0,
+                    "total_nfts": 0
                 }
-                
-            # Obtener conteo de usuarios
+
+            # Obtener conteo de usuarios registrados
             stats["total_users"] = user_collection.count_documents({})
-            
+
             # Obtener conteo de reportes
             report_collection = self.get_collection()
             stats["total_reports"] = report_collection.count_documents({})
-            
-            # Obtener conteo de playas
-            db_beaches = self._client[BEACHES_DB_NAME]
-            beaches_collection = db_beaches[BEACHES_COLLECTION]
-            stats["total_beaches"] = beaches_collection.count_documents({})
-            
+
+            # Contar playas INTERVENIDAS: solo las que tienen al menos un escaneo asociado.
+            # Cada vez que un usuario escanea, se guarda su beach_id en su array scanned_beaches
+            # (via $addToSet desde el endpoint /api/users/{id}/scan-beach).
+            # Aqui contamos cuantos IDs de playa distintos aparecen en TODOS los usuarios.
+            beaches_pipeline = [
+                # Solo usuarios que tienen al menos una playa escaneada
+                {"$match": {"scanned_beaches": {"$exists": True, "$ne": []}}},
+                # Desagregar el array de playas escaneadas
+                {"$unwind": "$scanned_beaches"},
+                # Agrupar por beach_id para obtener IDs únicos
+                {"$group": {"_id": "$scanned_beaches.id"}},
+                # Contar cuántos IDs únicos hay
+                {"$count": "total"}
+            ]
+            beaches_result = list(user_collection.aggregate(beaches_pipeline))
+            stats["total_beaches"] = beaches_result[0]["total"] if beaches_result else 0
+
+
             return stats
         except Exception as e:
             logger.error(f"❌ Error calculando estadísticas de administración: {e}")
@@ -306,6 +321,7 @@ class MongoDBConnection:
                 "bottle_scans": 0,
                 "can_scans": 0,
                 "plastic_scans": 0,
+                "total_nfts": 0,
                 "total_users": 0,
                 "total_reports": 0,
                 "total_beaches": 0

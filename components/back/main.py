@@ -508,7 +508,9 @@ async def update_user(user_id: str, updates: dict):
         allowed_fields = {
             "avatar_url", "username", "email", "tpl_title", "points", "level",
             "total_scans", "bottle_scans", "can_scans", "plastic_scans", "has_changed_username",
-            "has_awarded_profile_visit", "initials", "address", "NFTs"
+            "has_awarded_profile_visit", "initials", "address", "NFTs",
+            # Campos de playa asociada al escaneo
+            "last_scanned_beach_id", "last_scanned_beach_name",
         }
         
         # Filtrar solo campos permitidos
@@ -701,6 +703,54 @@ async def get_admin_stats():
     except Exception as e:
         logger.error(f"❌ Error en endpoint de estadísticas de administración: {str(e)}")
         raise HTTPException(500, f"Error al obtener estadísticas: {str(e)}")
+
+
+@app.post("/api/users/{user_id}/scan-beach")
+async def register_scanned_beach(user_id: str, request: Request):
+    """
+    Registra una playa escaneada en el historial del usuario usando $addToSet
+    para que cada playa ID aparezca solo una vez aunque el usuario escanee varias veces.
+
+    Body JSON esperado:
+        { "beach_id": "...", "beach_name": "..." }
+    """
+    try:
+        if not MONGODB_AVAILABLE:
+            raise HTTPException(503, "Base de datos no disponible")
+
+        body = await request.json()
+        beach_id   = body.get("beach_id")
+        beach_name = body.get("beach_name")
+
+        if not beach_id:
+            raise HTTPException(400, "Se requiere beach_id")
+
+        collection = db_connection.get_user_collection()
+        collection.update_one(
+            {"_id": user_id},
+            {
+                "$addToSet": {
+                    "scanned_beaches": {
+                        "id":   beach_id,
+                        "name": beach_name or beach_id,
+                    }
+                },
+                "$set": {
+                    "last_scanned_beach_id":   beach_id,
+                    "last_scanned_beach_name": beach_name or beach_id,
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+            }
+        )
+
+        logger.info(f"[scan-beach] Usuario {user_id} registró escaneo en playa '{beach_name}' ({beach_id})")
+        return {"success": True, "beach_id": beach_id, "beach_name": beach_name}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error registrando playa escaneada: {str(e)}")
+        raise HTTPException(500, f"Error al registrar playa: {str(e)}")
 
 
 @app.post("/scan")
