@@ -4,7 +4,8 @@ import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useCameraPermissions } from 'expo-camera';
+import WasteScanner from '../components/WasteScanner';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
@@ -215,58 +216,20 @@ const PermissionScreen = ({ onRequestPermission, isDark }) => {
         </View>
     );
 };
-const ROBOFLOW_API_KEY = ENV.ROBOFLOW_API_KEY;
-const ROBOFLOW_MODEL = ENV.ROBOFLOW_MODEL;
-const ROBOFLOW_URL = `https://serverless.roboflow.com/${ROBOFLOW_MODEL}`;
-// API de IA propia — api_ia.py corriendo en el servidor
-const AI_API_URL = ENV.AI_API_URL;        // e.g. http://192.168.100.45:5000
-const USE_OWN_AI = ENV.USE_OWN_AI;        // true = modelo propio, false = Roboflow
-const SCAN_INTERVAL_MS = 1500;
-const CONFIDENCE_THRESHOLD = 30;          // % mínimo (30% con 2 épocas, subir a 60 tras 100)
 const CLASS_MAPPING = {
-    'plastic-bottle': { type: 'bottle', labelKey: 'scan_label_plastic_bottle', points: 5, color: '#22c55e' },
-    'bottle': { type: 'bottle', labelKey: 'scan_label_bottle', points: 5, color: '#22c55e' },
-    'can': { type: 'can', labelKey: 'scan_label_can', points: 3, color: '#eab308' },
-    'plastic': { type: 'plastic', labelKey: 'scan_label_plastic', points: 1, color: '#3b82f6' },
+    'battery': { type: 'dangerous', labelKey: 'scan_label_battery', points: 15, color: '#f43f5e' },
+    'cardboard': { type: 'paper', labelKey: 'scan_label_cardboard', points: 5, color: '#f97316' },
+    'glass': { type: 'glass', labelKey: 'scan_label_glass', points: 8, color: '#06b6d4' },
+    'metal': { type: 'metal', labelKey: 'scan_label_metal', points: 8, color: '#64748b' },
+    'paper': { type: 'paper', labelKey: 'scan_label_paper', points: 5, color: '#a855f7' },
+    'plastic': { type: 'plastic', labelKey: 'scan_label_plastic', points: 6, color: '#3b82f6' },
+    'plastic_bottle': { type: 'bottle', labelKey: 'scan_label_plastic_bottle', points: 6, color: '#22c55e' },
+    // fallbacks
+    'bottle': { type: 'bottle', labelKey: 'scan_label_bottle', points: 6, color: '#22c55e' },
+    'can': { type: 'can', labelKey: 'scan_label_can', points: 8, color: '#eab308' },
     'trash': { type: 'trash', labelKey: 'scan_label_trash', points: 1, color: '#ef4444' },
-    'paper': { type: 'trash', labelKey: 'scan_label_paper', points: 1, color: '#a855f7' },
-    'cardboard': { type: 'trash', labelKey: 'scan_label_cardboard', points: 1, color: '#f97316' },
-    'glass': { type: 'bottle', labelKey: 'scan_label_glass', points: 5, color: '#06b6d4' },
-    'metal': { type: 'can', labelKey: 'scan_label_metal', points: 3, color: '#64748b' },
 };
-const DetectionBox = ({ prediction, frameSize, imageSize }) => {
-    const { t } = useLanguage();
-    const scaleX = frameSize / imageSize.width;
-    const scaleY = frameSize / imageSize.height;
-    const boxWidth = prediction.width * scaleX;
-    const boxHeight = prediction.height * scaleY;
-    const left = (prediction.x * scaleX) - (boxWidth / 2);
-    const top = (prediction.y * scaleY) - (boxHeight / 2);
-    const mapping = CLASS_MAPPING[prediction.class.toLowerCase()] || { label: prediction.class, color: '#22c55e' };
-    const label = mapping.labelKey ? t(mapping.labelKey) : (mapping.label || prediction.class);
-    const confidence = Math.round(prediction.confidence * 100);
-    return (
-        <Animated.View
-            entering={FadeIn.duration(200)}
-            style={[
-                styles.detectionBox,
-                {
-                    left,
-                    top,
-                    width: boxWidth,
-                    height: boxHeight,
-                    borderColor: mapping.color,
-                }
-            ]}
-        >
-            <View style={[styles.detectionLabel, { backgroundColor: mapping.color }]}>
-                <Text style={styles.detectionLabelText}>
-                    {label} {confidence}%
-                </Text>
-            </View>
-        </Animated.View>
-    );
-};
+const DetectionBox = () => null;
 const DetectionPanel = ({ counts, totalPoints, isDark }) => {
     const { t } = useLanguage();
     if (!counts || Object.keys(counts).length === 0) return null;
@@ -442,179 +405,58 @@ export default function ScanScreen() {
             false
         );
     }, [scannerSize]);
-    // Continuous scanning effect with locking logic
-    useEffect(() => {
-        if (permission?.granted && isCameraActive && isAutoScanning && cameraRef.current && isFocused && activeBeach) {
-            console.log('Starting continuous scan loop...');
-            // ... (rest of the logic remains the same but wrapped in activeBeach check)
-            if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-            scanIntervalRef.current = setInterval(() => {
-                if (!isScanningRef.current && cameraRef.current) {
-                    performScan();
-                }
-            }, SCAN_INTERVAL_MS);
-            return () => {
-                if (scanIntervalRef.current) {
-                    clearInterval(scanIntervalRef.current);
-                }
-            };
-        }
-    }, [permission?.granted, isCameraActive, isAutoScanning, isFocused, activeBeach]);
+
     const scanLineStyle = useAnimatedStyle(() => ({
         transform: [{ translateY: scanLineY.value }],
     }));
     const pulseStyle = useAnimatedStyle(() => ({
         opacity: pulseOpacity.value,
     }));
-    // Real-time scan function — usa modelo propio (api_ia.py) o Roboflow como fallback
-    const performScan = async () => {
-        if (!cameraRef.current || isScanning || !activeBeach) return;
-        setIsScanning(true);
-        try {
-            // Capturar foto de la cámara
-            const photo = await cameraRef.current.takePictureAsync({
-                quality: 0.5,
-                base64: true,
-            });
-            if (!photo || !photo.base64) {
-                console.log('No photo captured');
-                return;
-            }
-            if (photo.width && photo.height) {
-                setImageSize({ width: photo.width, height: photo.height });
-            }
-            let base64Data = photo.base64;
-            if (base64Data.startsWith('data:')) {
-                base64Data = base64Data.split(',')[1];
-            }
 
-            let apiPredictions = [];
-
-            if (USE_OWN_AI) {
-                // ── Modo: API propia (modelo YOLOv8 entrenado) ──────────────
-                try {
-                    const aiResponse = await fetch(`${AI_API_URL}/classify`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain' },
-                        body: base64Data,
-                        timeout: 10000,
-                    });
-                    if (aiResponse.ok) {
-                        const aiData = await aiResponse.json();
-                        // Normalizar al formato de Roboflow para reutilizar el resto del código
-                        apiPredictions = (aiData.predictions || []).map(p => ({
-                            class: p.class,
-                            confidence: p.confidence / 100, // convertir % → 0-1
-                            x: p.x,
-                            y: p.y,
-                            width: p.width,
-                            height: p.height,
-                        }));
-                        console.log(`[AI] Detectado: ${apiPredictions.map(p => p.class + ' ' + Math.round(p.confidence*100) + '%').join(', ') || 'nada'}`);
-                    } else {
-                        console.log('[AI] Error del servidor:', aiResponse.status);
-                    }
-                } catch (aiError) {
-                    console.log('[AI] No se pudo conectar al servidor de IA:', aiError.message);
-                }
-            } else {
-                // ── Modo: Roboflow (fallback) ───────────────────────────────
-                const response = await fetch(
-                    `${ROBOFLOW_URL}?api_key=${ROBOFLOW_API_KEY}&confidence=${CONFIDENCE_THRESHOLD}&overlap=50`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: base64Data,
-                    }
-                );
-                if (!response.ok) {
-                    console.log('Roboflow error:', response.status);
-                    return;
-                }
-                const data = await response.json();
-                apiPredictions = data.predictions || [];
-            }
-
-            const margin = 10;
-            const imgW = photo.width;
-            const imgH = photo.height;
-            apiPredictions = apiPredictions.filter(p => {
-                const x = p.x;
-                const y = p.y;
-                const w = p.width;
-                const h = p.height;
-                const minX = x - w / 2;
-                const maxX = x + w / 2;
-                const minY = y - h / 2;
-                const maxY = y + h / 2;
-                const safelyInside = minX > margin && maxX < (imgW - margin) &&
-                    minY > margin && maxY < (imgH - margin);
-                return safelyInside;
-            });
-            setPredictions(apiPredictions);
-            if (apiPredictions.length > 0) {
-                const counts = {};
-                for (const pred of apiPredictions) {
-                    const cls = pred.class;
-                    if (cls) {
-                        counts[cls] = (counts[cls] || 0) + 1;
-                    }
-                }
-                let totalPoints = 0;
-                const detectedItems = [];
-                for (const pred of apiPredictions) {
-                    const className = pred.class;
-                    const mapping = CLASS_MAPPING[className.toLowerCase()] ||
-                        { type: 'trash', label: className, points: 5, color: '#3b82f6' };
-                    const area = pred.width * pred.height;
-                    const imageArea = imageSize.width * imageSize.height;
-                    const sizePercent = (area / imageArea) * 100;
-                    let sizeMultiplier = 1;
-                    if (sizePercent > 20) sizeMultiplier = 3;
-                    else if (sizePercent > 10) sizeMultiplier = 2;
-                    else if (sizePercent > 5) sizeMultiplier = 1.5;
-                    const itemPoints = Math.round(mapping.points * sizeMultiplier);
-                    totalPoints += itemPoints;
-                    const existingItem = detectedItems.find(i => i.className === className);
-                    if (existingItem) {
-                        existingItem.count++;
-                        existingItem.points += itemPoints;
-                    } else {
-                        detectedItems.push({
-                            className,
-                            count: 1,
-                            labelKey: mapping.labelKey,
-                            label: mapping.label || className,
-                            points: itemPoints,
-                            sizePercent: Math.round(sizePercent),
-                            width: Math.round(pred.width),
-                            height: Math.round(pred.height),
-                        });
-                    }
-                }
-                const finalCounts = {};
-                for (const item of detectedItems) {
-                    finalCounts[item.className] = item.count;
-                }
-                setDetectionResults({
-                    items: detectedItems,
-                    totalPoints,
-                    count: apiPredictions.length,
-                    counts: finalCounts,
-                });
-                setIsReadyToCollect(true);
-            } else {
-                if (isReadyToCollectRef.current) {
-                    setPredictions([]);
-                    setDetectionResults(null);
-                    setIsReadyToCollect(false);
-                }
-            }
-        } catch (error) {
-            console.log('Scan error:', error.message);
-        } finally {
-            setIsScanning(false);
+    const handlePrediction = (pred) => {
+        if (!pred) {
+            setPredictions([]);
+            setDetectionResults(null);
+            setIsReadyToCollect(false);
+            return;
         }
+
+        const formattedPred = {
+            class: pred.class,
+            confidence: pred.confidence,
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+        };
+
+        setPredictions([formattedPred]);
+
+        const className = pred.class.toLowerCase();
+        const mapping = CLASS_MAPPING[className] ||
+            { type: 'trash', label: className, points: 5, color: '#3b82f6' };
+
+        const itemPoints = mapping.points;
+
+        const detectedItems = [{
+            className,
+            count: 1,
+            labelKey: mapping.labelKey,
+            label: mapping.label || className,
+            points: itemPoints,
+            sizePercent: 10,
+            width: 0,
+            height: 0,
+        }];
+
+        setDetectionResults({
+            items: detectedItems,
+            totalPoints: itemPoints,
+            count: 1,
+            counts: { [className]: 1 },
+        });
+
+        setIsReadyToCollect(true);
     };
     const handleCollect = () => {
         console.log("[ScanScreen] handleCollect triggered");
@@ -648,6 +490,22 @@ export default function ScanScreen() {
 
     const processReclaim = (mainType, rewardPoints) => {
         console.log(`[ScanScreen] Reclaiming ${rewardPoints} points for ${mainType}`);
+        
+        // Registrar escaneo en el backend FastAPI
+        if (mongoUserId) {
+            fetch(`${ENV.API_BASE_URL}/api/scan`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    waste_class: mainType.toLowerCase().replace(' ', '_'),
+                    confidence: predictions[0]?.confidence || 0.95,
+                    scanned_at: new Date().toISOString(),
+                    user_id: mongoUserId,
+                    beach_id: activeBeach?.id,
+                }),
+            }).catch(err => console.warn('[ScanScreen] /api/scan sync error:', err.message));
+        }
+
         const { unlockedNFT } = scanItem(mainType.toLowerCase().includes('plastic') ? 'plastic' : 'trash', rewardPoints);
         
         // Sync to blockchain only if NOT admin
@@ -914,10 +772,10 @@ export default function ScanScreen() {
                 ]}>
                     { }
                     <View style={{ flex: 1, width: '100%', height: '100%' }}>
-                        <CameraView
-                            ref={cameraRef}
-                            style={[styles.cameraInFrame]}
-                            facing="back"
+                        <WasteScanner
+                            isActive={isCameraActive && isAutoScanning && isFocused && !isReadyToCollect}
+                            onPrediction={handlePrediction}
+                            style={styles.cameraInFrame}
                         />
                     </View>
                     { }

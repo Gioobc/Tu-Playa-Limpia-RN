@@ -100,6 +100,15 @@ class AdminLogin(BaseModel):
     email: str = Field(..., max_length=100)
 
 
+class ScanRequest(BaseModel):
+    waste_class: str
+    confidence: float
+    scanned_at: Optional[str] = None
+    user_id: Optional[str] = None
+    beach_id: Optional[str] = None
+
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -1010,6 +1019,68 @@ async def get_beaches():
     except Exception as e:
         logger.error(f"❌ Error obteniendo playas: {str(e)}")
         raise HTTPException(500, f"Error al obtener playas: {str(e)}")
+
+# Mapa de clases -> información de reciclaje (sincronizado con scan.route.js)
+WASTE_INFO = {
+    "battery": { "categoria": "Peligroso", "puntos": 15, "instruccion": "Deposita en punto limpio especial para pilas" },
+    "cardboard": { "categoria": "Reciclable", "puntos": 5, "instruccion": "Aplana y deposita en contenedor azul" },
+    "glass": { "categoria": "Reciclable", "puntos": 8, "instruccion": "Deposita en contenedor verde" },
+    "metal": { "categoria": "Reciclable", "puntos": 8, "instruccion": "Deposita en contenedor amarillo" },
+    "paper": { "categoria": "Reciclable", "puntos": 5, "instruccion": "Deposita en contenedor azul" },
+    "plastic": { "categoria": "Reciclable", "puntos": 6, "instruccion": "Deposita en contenedor amarillo" },
+    "plastic_bottle": { "categoria": "Reciclable", "puntos": 6, "instruccion": "Vacía, aplana y deposita en contenedor amarillo" },
+}
+
+@app.post("/api/scan")
+async def register_scan(payload: ScanRequest):
+    """
+    Registrar el resultado de un escaneo local de residuos en la base de datos
+    """
+    if not payload.waste_class or payload.confidence is None:
+        raise HTTPException(status_code=400, detail="Faltan campos obligatorios: waste_class, confidence")
+
+    waste_class = payload.waste_class.strip().lower()
+    if waste_class not in WASTE_INFO:
+        raise HTTPException(status_code=400, detail=f"Clase de residuo desconocida: {waste_class}")
+
+    info = WASTE_INFO[waste_class]
+
+    try:
+        scan_doc = {
+            "waste_class": waste_class,
+            "confidence": float(payload.confidence),
+            "categoria": info["categoria"],
+            "puntos": info["puntos"],
+            "scanned_at": payload.scanned_at or datetime.utcnow().isoformat(),
+            "user_id": payload.user_id,
+            "beach_id": payload.beach_id,
+            "created_at": datetime.utcnow().isoformat()
+        }
+
+        if MONGODB_AVAILABLE:
+            db = db_connection.get_database()
+            result = db["scans"].insert_one(scan_doc)
+            scan_id = str(result.inserted_id)
+        else:
+            scan_id = str(uuid.uuid4())
+
+        logger.info(f"♻️ Scan registrado: {waste_class} ({round(payload.confidence * 100, 2)}%) -> +{info['puntos']} TPL")
+
+        return {
+            "success": True,
+            "scan_id": scan_id,
+            "waste_class": waste_class,
+            "confidence": round(payload.confidence, 4),
+            "categoria": info["categoria"],
+            "puntos": info["puntos"],
+            "instruccion": info["instruccion"],
+            "scanned_at": scan_doc["scanned_at"]
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Error al guardar escaneo: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error interno al guardar el escaneo: {str(e)}")
+
 
 @app.get("/api/reports/status")
 async def get_database_status():
