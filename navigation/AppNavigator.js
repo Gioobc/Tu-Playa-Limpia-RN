@@ -1,7 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useGame } from '../context/GameContext';
@@ -112,8 +112,9 @@ function LockedTabIcon({ name, size, focused, isLocked }) {
     );
 }
 import { useWindowDimensions } from 'react-native';
-import DesktopSidebar from '../components/DesktopSidebar';
+import DesktopSidebar, { SIDEBAR_COLLAPSED, SIDEBAR_EXPANDED } from '../components/DesktopSidebar';
 import { isDesktop } from '../constants/responsive';
+
 function TabNavigator({ isAdmin }) {
     const { level } = useGame();
     const { colors, shadows, isDark } = useTheme();
@@ -122,12 +123,28 @@ function TabNavigator({ isAdmin }) {
     const isPromotionsLocked = level < 2;
     const showSidebar = width >= 1024;
     const isAdminView = isAdmin || username === 'administrador';
+
+    // Animated value for content margin (mirrors sidebar width)
+    const contentMargin = React.useRef(new Animated.Value(SIDEBAR_COLLAPSED)).current;
+
+    const handleSidebarExpand = React.useCallback((expanded, targetWidth) => {
+        Animated.spring(contentMargin, {
+            toValue: targetWidth,
+            useNativeDriver: false,
+            tension: 70,
+            friction: 12,
+        }).start();
+    }, [contentMargin]);
+
     return (
         <View style={{ flex: 1, flexDirection: 'row' }}>
-            { }
-            {showSidebar && <DesktopSidebar isAdmin={isAdminView} />}
-            { }
-            <View style={{ flex: 1 }}>
+            {showSidebar && (
+                <DesktopSidebar
+                    isAdmin={isAdminView}
+                    onExpandChange={handleSidebarExpand}
+                />
+            )}
+            <Animated.View style={{ flex: 1 }}>
                 <Tab.Navigator
                     initialRouteName={isAdminView ? "Reports" : "Inicio"}
                     screenOptions={{
@@ -256,7 +273,7 @@ function TabNavigator({ isAdmin }) {
                         </>
                     )}
                 </Tab.Navigator>
-            </View>
+            </Animated.View>
         </View>
     );
 }
