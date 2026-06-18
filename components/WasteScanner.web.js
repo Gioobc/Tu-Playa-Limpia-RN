@@ -1,123 +1,124 @@
+/**
+ * WasteScanner.web.js  — Versión WEB
+ *
+ * El modelo TF.js exportado con Keras 3 es incompatible con TF.js 4.x
+ * (capas TrueDivide / Subtract no soportadas + formato nodeData distinto).
+ *
+ * Solución: capturar frame del video con canvas y enviarlo al backend
+ * FastAPI (/classify) que corre TFLite localmente. Esto es más rápido,
+ * más preciso y no requiere cargar 9 MB de modelo en el browser.
+ */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { CameraView } from 'expo-camera';
+import ENV from '../constants/env';
 
-const LABELS = ["battery", "cardboard", "glass", "metal", "paper", "plastic", "plastic_bottle"];
+const SCAN_INTERVAL_MS = 1500;   // cada 1.5s para no saturar el backend
 const IMG_SIZE = 224;
-const SCAN_INTERVAL_MS = 1000;
-const CONFIDENCE_THRESHOLD = 0.55;
+
+// URL del endpoint de clasificación — usa la misma base que el resto de la app
+const CLASSIFY_URL = `${ENV.API_BASE_URL}/classify`;
 
 export default function WasteScanner({ onPrediction, isActive, style }) {
-    const [tfReady, setTfReady] = useState(false);
-    const [modelLoading, setModelLoading] = useState(true);
-    const modelRef = useRef(null);
-    const intervalRef = useRef(null);
+    const [status, setStatus] = useState('ready'); // 'ready' | 'scanning' | 'error'
     const containerRef = useRef(null);
+    const canvasRef = useRef(null);
+    const intervalRef = useRef(null);
     const isScanningRef = useRef(false);
 
-    // Dynamically load TensorFlow.js from CDN
-    useEffect(() => {
-        if (window.tf) {
-            setTfReady(true);
-            return;
-        }
+    // ── Captura frame y envía al backend ──────────────────────────────────
+    const runInference = useCallback(async () => {
+        if (!isActive || isScanningRef.current) return;
 
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js';
-        script.onload = () => {
-            setTfReady(true);
-        };
-        script.onerror = (e) => {
-            console.error("Failed to load TensorFlow.js from CDN:", e);
-        };
-        document.head.appendChild(script);
-    }, []);
+        // Buscar el elemento <video> de la cámara en el DOM
+        const video = containerRef.current?.querySelector('video')
+            || document.querySelector('video');
 
-    // Load TFJS layers model
-    useEffect(() => {
-        if (!tfReady) return;
-
-        async function loadModel() {
-            try {
-                setModelLoading(true);
-                // Load model from public directory
-                const model = await window.tf.loadLayersModel('/model/tfjs/model.json');
-                modelRef.current = model;
-                setModelLoading(false);
-                console.log("[WasteScanner Web] Model loaded successfully");
-            } catch (err) {
-                console.error("[WasteScanner Web] Error loading model:", err);
-            }
-        }
-        loadModel();
-    }, [tfReady]);
-
-    const runInference = useCallback(() => {
-        if (!modelRef.current || !isActive || isScanningRef.current) return;
-
-        // Find the video element inside our container or DOM
-        const video = containerRef.current?.querySelector('video') || document.querySelector('video');
-        if (!video || video.readyState < 2) return; // HAVE_CURRENT_DATA
+        if (!video || video.readyState < 2 || video.videoWidth === 0) return;
 
         isScanningRef.current = true;
+        setStatus('scanning');
 
         try {
-            window.tf.tidy(() => {
-                const tensor = window.tf.browser.fromPixels(video)
-                    .resizeNearestNeighbor([IMG_SIZE, IMG_SIZE])
-                    .toFloat()
-                    .div(127.5)
-                    .sub(1.0)
-                    .expandDims(0);
+            // 1. Capturar frame en canvas 224x224
+            if (!canvasRef.current) {
+                canvasRef.current = document.createElement('canvas');
+            }
+            const canvas = canvasRef.current;
+            canvas.width = IMG_SIZE;
+            canvas.height = IMG_SIZE;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, IMG_SIZE, IMG_SIZE);
 
-                const predictions = modelRef.current.predict(tensor);
-                const scores = predictions.dataSync();
+            // 2. Convertir a JPEG base64 (calidad 0.7 para reducir payload)
+            const b64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
 
-                const maxIdx = scores.indexOf(Math.max(...scores));
-                const maxScore = scores[maxIdx];
-
-                if (maxScore >= CONFIDENCE_THRESHOLD) {
-                    onPrediction({
-                        class: LABELS[maxIdx],
-                        confidence: maxScore,
-                    });
-                } else {
-                    onPrediction(null);
-                }
+            // 3. Enviar al backend
+            const resp = await fetch(CLASSIFY_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: b64 }),
+                signal: AbortSignal.timeout(5000),  // timeout 5s
             });
+
+            if (!resp.ok) {
+                console.warn('[WasteScanner Web] Backend error:', resp.status);
+                onPrediction(null);
+                return;
+            }
+
+            const data = await resp.json();
+            const preds = data.predictions || [];
+
+            if (preds.length > 0 && preds[0].confidence >= 0.45) {
+                onPrediction({
+                    class: preds[0].class,
+                    confidence: preds[0].confidence,
+                });
+            } else {
+                onPrediction(null);
+            }
+
+            setStatus('ready');
         } catch (err) {
-            console.warn("[WasteScanner Web] Inference error:", err);
+            // Timeout o red caída → no mostrar error, solo null
+            if (err.name !== 'TimeoutError') {
+                console.warn('[WasteScanner Web] Inference error:', err.message || err);
+            }
             onPrediction(null);
+            setStatus('ready');
         } finally {
             isScanningRef.current = false;
         }
     }, [isActive, onPrediction]);
 
+    // ── Intervalo de escaneo ──────────────────────────────────────────────
     useEffect(() => {
-        if (isActive && !modelLoading && tfReady) {
+        if (isActive) {
             intervalRef.current = setInterval(runInference, SCAN_INTERVAL_MS);
         } else {
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current);
-            }
+            clearInterval(intervalRef.current);
+            isScanningRef.current = false;
         }
         return () => {
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current);
-            }
+            clearInterval(intervalRef.current);
+            isScanningRef.current = false;
         };
-    }, [isActive, modelLoading, tfReady, runInference]);
+    }, [isActive, runInference]);
 
+    // ── Render ─────────────────────────────────────────────────────────────
     return (
         <View ref={containerRef} style={style || styles.container}>
             <CameraView
                 style={StyleSheet.absoluteFill}
                 facing="back"
             />
-            {modelLoading && (
-                <View style={styles.loader}>
-                    <ActivityIndicator size="large" color="#00E5FF" />
-                    <Text style={styles.loaderText}>Cargando modelo de IA para Web...</Text>
+
+            {/* Indicador sutil de escaneo (no bloquea la vista) */}
+            {isActive && status === 'scanning' && (
+                <View style={styles.scanBadge}>
+                    <ActivityIndicator size="small" color="#00E5FF" />
+                    <Text style={styles.scanText}>Analizando...</Text>
                 </View>
             )}
         </View>
@@ -129,16 +130,22 @@ const styles = StyleSheet.create({
         flex: 1,
         position: 'relative',
     },
-    loader: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.7)',
-        justifyContent: 'center',
+    scanBadge: {
+        position: 'absolute',
+        bottom: 16,
+        alignSelf: 'center',
+        flexDirection: 'row',
         alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: 20,
+        gap: 8,
         zIndex: 10,
     },
-    loaderText: {
+    scanText: {
         color: '#fff',
-        marginTop: 10,
-        fontWeight: '600',
+        fontSize: 13,
+        fontWeight: '500',
     },
 });

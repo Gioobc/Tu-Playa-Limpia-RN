@@ -1,5 +1,8 @@
 import os, hashlib, requests, uuid
 import bcrypt
+import base64
+import io
+import numpy as np
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, BackgroundTasks
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +24,13 @@ app = FastAPI()
 # Por lo tanto, usamos una lista más amplia o permitimos dinámicamente
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https://.*\.vercel\.app|https://tuplayalimpia-tpl\.vercel\.app|http://localhost:.*|http://127\.0\.0\.1:.*",
+    allow_origin_regex=(
+        r"https://.*\.vercel\.app"
+        r"|https://tuplayalimpia-tpl\.vercel\.app"
+        r"|http://localhost:.*"
+        r"|http://127\.0\.0\.1:.*"
+        r"|http://192\.168\..*"   # Red local WiFi
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -830,6 +839,107 @@ async def scan(request: Request):
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         raise HTTPException(500, f"Error interno: {str(e)}")
+
+
+# ========== ENDPOINT DE CLASIFICACIÓN TFLite (para web) ==========
+
+# Ruta al modelo TFLite entrenado con Keras/TensorFlow
+_TFLITE_PATH = os.path.normpath(
+    os.environ.get(
+        "TFLITE_MODEL_PATH",
+        os.path.join(os.path.dirname(__file__), "..", "..", "assets", "model", "modelo_residuos.tflite")
+    )
+)
+_TFLITE_CLASSES = ["battery", "cardboard", "glass", "metal", "paper", "plastic", "plastic_bottle"]
+_TFLITE_INTERP = None
+_TFLITE_IN = None
+_TFLITE_OUT = None
+_TFLITE_SHAPE = (224, 224)
+
+def _load_interp():
+    global _TFLITE_INTERP, _TFLITE_IN, _TFLITE_OUT
+    if _TFLITE_INTERP is not None:
+        return True
+    if not os.path.exists(_TFLITE_PATH):
+        logger.warning(f"[classify] Modelo TFLite no encontrado: {_TFLITE_PATH}")
+        return False
+    try:
+        try:
+            import tflite_runtime.interpreter as tflite_rt
+            interp = tflite_rt.Interpreter(model_path=_TFLITE_PATH)
+        except ImportError:
+            import tensorflow as tf
+            interp = tf.lite.Interpreter(model_path=_TFLITE_PATH)
+        interp.allocate_tensors()
+        _TFLITE_INTERP = interp
+        _TFLITE_IN = interp.get_input_details()
+        _TFLITE_OUT = interp.get_output_details()
+        logger.info(f"[classify] ✅ Modelo TFLite cargado: {_TFLITE_PATH}")
+        return True
+    except Exception as e:
+        logger.error(f"[classify] Error al cargar TFLite: {e}")
+        return False
+
+# Intentar cargar al iniciar
+_load_interp()
+
+@app.post("/classify")
+async def classify_image(request: Request):
+    """
+    Endpoint de clasificación para la versión WEB.
+    Recibe imagen en base64 (body text/plain o JSON {image: base64}).
+    Devuelve {class, confidence} usando el modelo TFLite local.
+    """
+    from PIL import Image
+
+    if not _load_interp():
+        return JSONResponse({"error": "Modelo no disponible", "predictions": []}, status_code=503)
+
+    try:
+        body = await request.body()
+        if not body:
+            raise HTTPException(400, "Body vacío")
+
+        # Soportar body como texto base64 puro o como JSON {"image": "..."}
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type:
+            import json
+            data = json.loads(body)
+            b64 = data.get("image", "")
+        else:
+            b64 = body.decode("utf-8", errors="ignore")
+
+        # Quitar data URI prefix si viene
+        if "," in b64:
+            b64 = b64.split(",")[1]
+
+        img_bytes = base64.b64decode(b64)
+        image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        w, h = image.size
+
+        # Preprocesar: 224x224, normalizar [-1, 1] (MobileNetV2)
+        resized = image.resize(_TFLITE_SHAPE)
+        arr = np.array(resized, dtype=np.float32) / 127.5 - 1.0
+        arr = np.expand_dims(arr, 0)  # (1, 224, 224, 3)
+
+        _TFLITE_INTERP.set_tensor(_TFLITE_IN[0]["index"], arr)
+        _TFLITE_INTERP.invoke()
+        probs = _TFLITE_INTERP.get_tensor(_TFLITE_OUT[0]["index"])[0]
+
+        THRESHOLD = 0.45
+        results = [
+            {"class": _TFLITE_CLASSES[i], "confidence": float(probs[i])}
+            for i in range(len(probs))
+            if i < len(_TFLITE_CLASSES) and probs[i] >= THRESHOLD
+        ]
+        results.sort(key=lambda x: x["confidence"], reverse=True)
+
+        logger.info(f"[classify] {results[0]['class']} ({results[0]['confidence']:.2f})" if results else "[classify] Nada detectado")
+        return {"predictions": results, "image": {"width": w, "height": h}}
+
+    except Exception as e:
+        logger.error(f"[classify] Error: {e}")
+        return JSONResponse({"predictions": [], "image": {"width": 224, "height": 224}}, status_code=200)
 
 
 # ========== ENDPOINTS DE REPORTES ==========
