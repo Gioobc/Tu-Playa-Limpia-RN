@@ -62,7 +62,12 @@ export default function WasteScanner({ onPrediction, isActive, style }) {
             });
 
             if (!resp.ok) {
-                console.warn('[WasteScanner Web] Backend error:', resp.status);
+                try {
+                    const errData = await resp.json();
+                    console.warn(`[WasteScanner Web] Backend error ${resp.status}:`, errData.error || errData);
+                } catch (e) {
+                    console.warn('[WasteScanner Web] Backend error:', resp.status);
+                }
                 onPrediction(null);
                 return;
             }
