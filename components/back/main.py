@@ -859,29 +859,36 @@ _TFLITE_SHAPE = (224, 224)
 def _load_interp():
     global _TFLITE_INTERP, _TFLITE_IN, _TFLITE_OUT
     if _TFLITE_INTERP is not None:
-        return True
+        return True, None
     if not os.path.exists(_TFLITE_PATH):
-        logger.warning(f"[classify] Modelo TFLite no encontrado: {_TFLITE_PATH}")
-        return False
+        msg = f"Modelo TFLite no encontrado en la ruta: {_TFLITE_PATH}"
+        logger.warning(f"[classify] {msg}")
+        return False, msg
     try:
         try:
             import tflite_runtime.interpreter as tflite_rt
             interp = tflite_rt.Interpreter(model_path=_TFLITE_PATH)
         except ImportError:
-            import tensorflow as tf
-            interp = tf.lite.Interpreter(model_path=_TFLITE_PATH)
+            try:
+                import tensorflow as tf
+                interp = tf.lite.Interpreter(model_path=_TFLITE_PATH)
+            except ImportError as e:
+                msg = f"No se pudo importar tflite_runtime ni tensorflow. Instale uno de ellos (ej: pip install tensorflow o pip install tflite-runtime). Error: {str(e)}"
+                logger.error(f"[classify] {msg}")
+                return False, msg
         interp.allocate_tensors()
         _TFLITE_INTERP = interp
         _TFLITE_IN = interp.get_input_details()
         _TFLITE_OUT = interp.get_output_details()
         logger.info(f"[classify] ✅ Modelo TFLite cargado: {_TFLITE_PATH}")
-        return True
+        return True, None
     except Exception as e:
-        logger.error(f"[classify] Error al cargar TFLite: {e}")
-        return False
+        msg = f"Error al cargar TFLite: {str(e)}"
+        logger.error(f"[classify] {msg}")
+        return False, msg
 
 # Intentar cargar al iniciar
-_load_interp()
+_ = _load_interp()
 
 @app.post("/classify")
 async def classify_image(request: Request):
@@ -892,8 +899,9 @@ async def classify_image(request: Request):
     """
     from PIL import Image
 
-    if not _load_interp():
-        return JSONResponse({"error": "Modelo no disponible", "predictions": []}, status_code=503)
+    success, err_msg = _load_interp()
+    if not success:
+        return JSONResponse({"error": err_msg, "predictions": []}, status_code=503)
 
     try:
         body = await request.body()
