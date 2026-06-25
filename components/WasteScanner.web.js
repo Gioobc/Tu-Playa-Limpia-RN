@@ -25,14 +25,15 @@ export default function WasteScanner({ onPrediction, isActive, style }) {
     const canvasRef = useRef(null);
     const intervalRef = useRef(null);
     const isScanningRef = useRef(false);
+    const lastClassRef = useRef(null);
+    const consecutiveCountRef = useRef(0);
 
     // ── Captura frame y envía al backend ──────────────────────────────────
     const runInference = useCallback(async () => {
         if (!isActive || isScanningRef.current) return;
 
-        // Buscar el elemento <video> de la cámara en el DOM
-        const video = containerRef.current?.querySelector('video')
-            || document.querySelector('video');
+        // Buscar el elemento <video> de la cámara únicamente en el contenedor de este componente
+        const video = containerRef.current?.querySelector('video');
 
         if (!video || video.readyState < 2 || video.videoWidth === 0) return;
 
@@ -62,7 +63,12 @@ export default function WasteScanner({ onPrediction, isActive, style }) {
             });
 
             if (!resp.ok) {
-                console.warn('[WasteScanner Web] Backend error:', resp.status);
+                try {
+                    const errData = await resp.json();
+                    console.warn(`[WasteScanner Web] Backend error ${resp.status}:`, errData.error || errData);
+                } catch (e) {
+                    console.warn('[WasteScanner Web] Backend error:', resp.status);
+                }
                 onPrediction(null);
                 return;
             }
@@ -71,11 +77,26 @@ export default function WasteScanner({ onPrediction, isActive, style }) {
             const preds = data.predictions || [];
 
             if (preds.length > 0 && preds[0].confidence >= 0.45) {
-                onPrediction({
-                    class: preds[0].class,
-                    confidence: preds[0].confidence,
-                });
+                const detectedClass = preds[0].class;
+                if (detectedClass === lastClassRef.current) {
+                    consecutiveCountRef.current += 1;
+                } else {
+                    lastClassRef.current = detectedClass;
+                    consecutiveCountRef.current = 1;
+                }
+
+                // Requiere al menos 2 detecciones consecutivas de la misma clase para evitar falsos positivos
+                if (consecutiveCountRef.current >= 2) {
+                    onPrediction({
+                        class: preds[0].class,
+                        confidence: preds[0].confidence,
+                    });
+                } else {
+                    onPrediction(null);
+                }
             } else {
+                lastClassRef.current = null;
+                consecutiveCountRef.current = 0;
                 onPrediction(null);
             }
 
@@ -95,10 +116,14 @@ export default function WasteScanner({ onPrediction, isActive, style }) {
     // ── Intervalo de escaneo ──────────────────────────────────────────────
     useEffect(() => {
         if (isActive) {
+            lastClassRef.current = null;
+            consecutiveCountRef.current = 0;
             intervalRef.current = setInterval(runInference, SCAN_INTERVAL_MS);
         } else {
             clearInterval(intervalRef.current);
             isScanningRef.current = false;
+            lastClassRef.current = null;
+            consecutiveCountRef.current = 0;
         }
         return () => {
             clearInterval(intervalRef.current);

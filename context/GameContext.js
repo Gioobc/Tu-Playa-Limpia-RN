@@ -23,6 +23,7 @@ export const GameProvider = ({ children }) => {
     const [level, setLevel] = useState(1);
     const [activeBeach, setActiveBeach] = useState(null);
     const [cleanupHistory, setCleanupHistory] = useState([]);
+    const [requireLocation, setRequireLocation] = useState(true);
     const [user, setUser] = useState({
         name: '...',
         email: '',
@@ -34,7 +35,7 @@ export const GameProvider = ({ children }) => {
     const unlockingSet = useRef(new Set());
     const loadGameState = async () => {
         try {
-            const [storedPoints, storedItems, storedNfts, storedUser, storedCleanupHistory, storedRegDate, storedUsername] = await Promise.all([
+            const [storedPoints, storedItems, storedNfts, storedUser, storedCleanupHistory, storedRegDate, storedUsername, storedRequireLocation] = await Promise.all([
                 AsyncStorage.getItem(GAME_KEYS.POINTS),
                 AsyncStorage.getItem(GAME_KEYS.ITEMS),
                 AsyncStorage.getItem(GAME_KEYS.NFTS),
@@ -42,8 +43,12 @@ export const GameProvider = ({ children }) => {
                 AsyncStorage.getItem(GAME_KEYS.CLEANUP_HISTORY),
                 AsyncStorage.getItem('@tpl_registration_date'),
                 AsyncStorage.getItem('@tpl_username'),
+                AsyncStorage.getItem('@tpl_require_location'),
             ]);
             if (storedPoints) setPoints(parseInt(storedPoints));
+            if (storedRequireLocation !== null) {
+                setRequireLocation(storedRequireLocation === 'true');
+            }
             if (storedItems) setScannedItems(JSON.parse(storedItems));
             if (storedCleanupHistory) setCleanupHistory(JSON.parse(storedCleanupHistory));
 
@@ -217,6 +222,9 @@ export const GameProvider = ({ children }) => {
     useEffect(() => {
         AsyncStorage.setItem(GAME_KEYS.CLEANUP_HISTORY, JSON.stringify(cleanupHistory)).catch(() => { });
     }, [cleanupHistory]);
+    useEffect(() => {
+        AsyncStorage.setItem('@tpl_require_location', requireLocation.toString()).catch(() => { });
+    }, [requireLocation]);
 
     // Automatic Sync to Blockchain when milestones are reached
     useEffect(() => {
@@ -443,6 +451,8 @@ export const GameProvider = ({ children }) => {
             unlockNFT,
             unlockRegionNFT,
             reloadGameState: loadGameState,
+            requireLocation,
+            setRequireLocation,
             claimNFT: (id, txHash) => {
                 setNfts(prev => {
                     const updated = prev.map(n => n.id === id ? { ...n, claimed: true, txHash } : n);

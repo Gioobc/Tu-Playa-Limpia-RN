@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useCameraPermissions } from 'expo-camera';
+import * as Location from 'expo-location';
 import WasteScanner from '../components/WasteScanner';
 import Animated, {
     useSharedValue,
@@ -349,7 +350,7 @@ const LastScanInfoPanel = ({ scanInfo, isDark, onDismiss }) => {
     );
 };
 export default function ScanScreen() {
-    const { scanItem, activeBeach, endCleanup, syncTPLToBlockchain, scannedItems, points, updateUserProfile, user } = useGame();
+    const { scanItem, activeBeach, endCleanup, syncTPLToBlockchain, scannedItems, points, updateUserProfile, user, requireLocation } = useGame();
     const { mongoUserId } = useAuth(); // Import useAuth to check mongoUserId
     const { address: walletAddress } = useWallet();
     const { colors, isDark } = useTheme();
@@ -493,17 +494,46 @@ export default function ScanScreen() {
         
         // Registrar escaneo en el backend FastAPI
         if (mongoUserId) {
-            fetch(`${ENV.API_BASE_URL}/api/scan`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    waste_class: mainType.toLowerCase().replace(' ', '_'),
-                    confidence: predictions[0]?.confidence || 0.95,
-                    scanned_at: new Date().toISOString(),
-                    user_id: mongoUserId,
-                    beach_id: activeBeach?.id,
-                }),
-            }).catch(err => console.warn('[ScanScreen] /api/scan sync error:', err.message));
+            const sendScanRequest = async () => {
+                let coords = null;
+                if (requireLocation) {
+                    try {
+                        const loc = await Location.getLastKnownPositionAsync({});
+                        if (loc && loc.coords) {
+                            coords = {
+                                latitude: loc.coords.latitude,
+                                longitude: loc.coords.longitude
+                            };
+                        } else {
+                            const curLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+                            if (curLoc && curLoc.coords) {
+                                coords = {
+                                    latitude: curLoc.coords.latitude,
+                                    longitude: curLoc.coords.longitude
+                                };
+                            }
+                        }
+                    } catch (locErr) {
+                        console.warn('[ScanScreen] Error fetching coordinates for scan payload:', locErr.message);
+                    }
+                }
+
+                fetch(`${ENV.API_BASE_URL}/api/scan`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        waste_class: mainType.toLowerCase().replace(' ', '_'),
+                        confidence: predictions[0]?.confidence || 0.95,
+                        scanned_at: new Date().toISOString(),
+                        user_id: mongoUserId,
+                        beach_id: activeBeach?.id,
+                        latitude: coords?.latitude || null,
+                        longitude: coords?.longitude || null,
+                    }),
+                }).catch(err => console.warn('[ScanScreen] /api/scan sync error:', err.message));
+            };
+
+            sendScanRequest();
         }
 
         const { unlockedNFT } = scanItem(mainType.toLowerCase().includes('plastic') ? 'plastic' : 'trash', rewardPoints);

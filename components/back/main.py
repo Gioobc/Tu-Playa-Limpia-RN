@@ -866,16 +866,12 @@ def _load_interp():
         return False, msg
     try:
         try:
-            import tflite_runtime.interpreter as tflite_rt
-            interp = tflite_rt.Interpreter(model_path=_TFLITE_PATH)
-        except ImportError:
-            try:
-                import tensorflow as tf
-                interp = tf.lite.Interpreter(model_path=_TFLITE_PATH)
-            except ImportError as e:
-                msg = f"No se pudo importar tflite_runtime ni tensorflow. Instale uno de ellos (ej: pip install tensorflow o pip install tflite-runtime). Error: {str(e)}"
-                logger.error(f"[classify] {msg}")
-                return False, msg
+            import tensorflow as tf
+            interp = tf.lite.Interpreter(model_path=_TFLITE_PATH)
+        except Exception as e:
+            msg = f"No se pudo importar tensorflow ni cargar el modelo. Error: {str(e)}"
+            logger.error(f"[classify] {msg}")
+            return False, msg
         interp.allocate_tensors()
         _TFLITE_INTERP = interp
         _TFLITE_IN = interp.get_input_details()
@@ -925,14 +921,22 @@ async def classify_image(request: Request):
         image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
         w, h = image.size
 
-        # Preprocesar: 224x224, normalizar [-1, 1] (MobileNetV2)
+        # Preprocesar: 224x224, escala [0, 255] (porque preprocess_input está embebido en el modelo TFLite)
         resized = image.resize(_TFLITE_SHAPE)
-        arr = np.array(resized, dtype=np.float32) / 127.5 - 1.0
+        arr = np.array(resized, dtype=np.float32)
         arr = np.expand_dims(arr, 0)  # (1, 224, 224, 3)
 
         _TFLITE_INTERP.set_tensor(_TFLITE_IN[0]["index"], arr)
         _TFLITE_INTERP.invoke()
         probs = _TFLITE_INTERP.get_tensor(_TFLITE_OUT[0]["index"])[0]
+
+        # Log de probabilidades crudas de todas las clases para diagnóstico
+        raw_dict = {
+            _TFLITE_CLASSES[i]: round(float(probs[i]), 4)
+            for i in range(len(probs))
+            if i < len(_TFLITE_CLASSES)
+        }
+        logger.info(f"[classify] Predicciones crudas: {raw_dict}")
 
         THRESHOLD = 0.45
         results = [
@@ -942,7 +946,7 @@ async def classify_image(request: Request):
         ]
         results.sort(key=lambda x: x["confidence"], reverse=True)
 
-        logger.info(f"[classify] {results[0]['class']} ({results[0]['confidence']:.2f})" if results else "[classify] Nada detectado")
+        logger.info(f"[classify] Clasificado como: {results[0]['class']} ({results[0]['confidence']:.2f})" if results else "[classify] Nada superó el umbral")
         return {"predictions": results, "image": {"width": w, "height": h}}
 
     except Exception as e:

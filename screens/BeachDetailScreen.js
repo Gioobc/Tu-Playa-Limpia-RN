@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, Linking, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, Linking, useWindowDimensions, Switch, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { useGame } from '../context/GameContext';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -12,6 +13,18 @@ import { BRAND } from '../constants/theme';
 import FlagIcon from '../components/FlagIcon';
 import ReportModal from '../components/ReportModal';
 
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Radius of the earth in km
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 const BLUE_GREY = "#607d8b";
 const BLUE_GREY_BG = "rgba(96, 125, 139, 0.15)";
 
@@ -19,9 +32,10 @@ export default function BeachDetailScreen({ route, navigation }) {
     const { beach } = route.params || {};
     const { colors, isDark } = useTheme();
     const { t } = useLanguage();
-    const { startCleanup } = useGame();
+    const { startCleanup, requireLocation, setRequireLocation } = useGame();
     const { width } = useWindowDimensions();
     const [showReportModal, setShowReportModal] = useState(false);
+    const [isValidatingLocation, setIsValidatingLocation] = useState(false);
 
     // Si por alguna razon no llega beach data
     if (!beach) {
@@ -46,15 +60,64 @@ export default function BeachDetailScreen({ route, navigation }) {
         Linking.openURL(url);
     };
 
-    const handleStartCleanup = () => {
+    const handleStartCleanup = async () => {
         if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        startCleanup(beach);
-        // Al estar en un Stack superior, debemos navegar al TabNavigator primero
-        navigation.navigate('MainTabs', { screen: 'Escanear' });
+
+        if (requireLocation) {
+            setIsValidatingLocation(true);
+            try {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status !== 'granted') {
+                    Alert.alert(
+                        t('location_permission_required_title') || "Ubicación Requerida",
+                        t('location_permission_required_desc') || "Tu Playa Limpia necesita acceder a tu ubicación en tiempo real para verificar que te encuentras físicamente en la playa seleccionada."
+                    );
+                    setIsValidatingLocation(false);
+                    return;
+                }
+
+                const location = await Location.getCurrentPositionAsync({
+                    accuracy: Location.Accuracy.Balanced,
+                });
+                
+                const { latitude, longitude } = location.coords;
+                const distance = calculateDistance(latitude, longitude, beach.lat, beach.lng);
+                
+                if (distance <= 0.5) {
+                    setIsValidatingLocation(false);
+                    startCleanup(beach);
+                    navigation.navigate('MainTabs', { screen: 'Escanear' });
+                } else {
+                    Alert.alert(
+                        t('out_of_perimeter_title') || "Fuera de Perímetro",
+                        (t('out_of_perimeter_desc') || "No te encuentras dentro del perímetro de esta playa ({beachName}). Por favor, acércate físicamente a la playa para comenzar la limpieza.").replace('{beachName}', beach.name)
+                    );
+                    setIsValidatingLocation(false);
+                }
+            } catch (err) {
+                console.error("Error validating location:", err);
+                Alert.alert(
+                    t('location_error_title') || "Error de Ubicación",
+                    t('location_error_desc') || "Ocurrió un error al intentar verificar tu ubicación. Inténtalo de nuevo."
+                );
+                setIsValidatingLocation(false);
+            }
+        } else {
+            startCleanup(beach);
+            navigation.navigate('MainTabs', { screen: 'Escanear' });
+        }
     };
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
+            {isValidatingLocation && (
+                <View style={[StyleSheet.absoluteFill, styles.loadingOverlay]}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={[styles.loadingText, { color: '#fff' }]}>
+                        {t('checking_location') || "Verificando ubicación..."}
+                    </Text>
+                </View>
+            )}
             <ScrollView bounces={false} contentContainerStyle={{ flexGrow: 1 }}>
                 {/* Hero Header Image */}
                 <View style={styles.imageContainer}>
@@ -130,6 +193,31 @@ export default function BeachDetailScreen({ route, navigation }) {
                             </View>
                             <Ionicons name="open-outline" size={rs(20)} color={subTextColor} />
                         </TouchableOpacity>
+                    </View>
+
+                    {/* Toggle de validación de ubicación */}
+                    <View style={[
+                        styles.toggleRow,
+                        {
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#f8fafc',
+                            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0',
+                            borderWidth: 1,
+                        }
+                    ]}>
+                        <View style={{ flex: 1, paddingRight: SPACING.md }}>
+                            <Text style={[styles.toggleLabel, { color: textColor }]}>
+                                {t('validate_location_label') || "Validar ubicación (Perímetro)"}
+                            </Text>
+                            <Text style={[styles.toggleSublabel, { color: subTextColor }]}>
+                                {t('validate_location_desc') || "Verifica que estés físicamente en la playa seleccionada para escanear."}
+                            </Text>
+                        </View>
+                        <Switch
+                            value={requireLocation}
+                            onValueChange={setRequireLocation}
+                            trackColor={{ false: '#767577', true: colors.primary }}
+                            thumbColor={requireLocation ? '#fff' : '#f4f3f4'}
+                        />
                     </View>
 
                     {/* Botón de Acción Principal: Iniciar Limpieza */}
@@ -288,5 +376,33 @@ const styles = StyleSheet.create({
         fontSize: rf(18),
         fontWeight: '700',
         letterSpacing: 0.5,
+    },
+    toggleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: SPACING.md,
+        borderRadius: RADIUS.lg,
+        marginTop: SPACING.lg,
+    },
+    toggleLabel: {
+        fontSize: rf(15),
+        fontWeight: '600',
+        marginBottom: rs(2),
+    },
+    toggleSublabel: {
+        fontSize: rf(12),
+        lineHeight: rf(16),
+    },
+    loadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 9999,
+    },
+    loadingText: {
+        marginTop: SPACING.md,
+        fontSize: rf(16),
+        fontWeight: '600',
     }
 });
