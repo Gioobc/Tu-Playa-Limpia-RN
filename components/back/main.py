@@ -1084,45 +1084,58 @@ class RoboflowScanRequest(BaseModel):
 @app.post("/roboflow/scan")
 async def roboflow_scan_proxy(payload: RoboflowScanRequest):
     """
-    Proxy para el Roboflow Workflow 'Beach debris v1 Logic'.
-    Recibe una imagen en base64 y la envía al workflow configurado.
-    Devuelve las predicciones en el mismo formato que usa ScanScreen.
+    Proxy para Roboflow — evita CORS en modo web.
+    - Si WORKSPACE+WORKFLOW están configurados: usa el endpoint de workflow.
+    - Si solo MODEL está configurado: usa inferencia directa (modelo).
+    Devuelve { predictions: [...] } normalizado para ScanScreen.
     """
     if not API_KEY:
         raise HTTPException(status_code=503, detail="ROBOFLOW_API_KEY no configurada en el servidor.")
 
-    # Construir URL del workflow o del modelo directo como fallback
-    if WORKSPACE and WORKFLOW:
-        rf_url = f"https://serverless.roboflow.com/{WORKSPACE}/workflows/{WORKFLOW}"
-        rf_body = {
-            "api_key": API_KEY,
-            "inputs": {
-                "image": {"type": "base64", "value": payload.image}
-            }
-        }
-    else:
-        rf_url = f"https://serverless.roboflow.com/{MODEL_ID}"
-        rf_body = {
-            "api_key": API_KEY,
-            "image": {"type": "base64", "value": payload.image}
-        }
-
     try:
-        rf_response = requests.post(rf_url, json=rf_body, timeout=20)
-        rf_response.raise_for_status()
+        if WORKSPACE and WORKFLOW:
+            # ── Modo Workflow ──────────────────────────────────────────────
+            rf_url = f"https://serverless.roboflow.com/{WORKSPACE}/workflows/{WORKFLOW}"
+            rf_response = requests.post(
+                rf_url,
+                json={
+                    "api_key": API_KEY,
+                    "inputs": {"image": {"type": "base64", "value": payload.image}}
+                },
+                timeout=20,
+            )
+        else:
+            # ── Modo Modelo Directo (beach-debris-ozfdf/1) ─────────────────
+            # La API de inferencia directa de Roboflow recibe:
+            # POST /model_id?api_key=KEY  con body = base64 plano
+            rf_url = f"https://serverless.roboflow.com/{MODEL_ID}"
+            rf_response = requests.post(
+                rf_url,
+                params={"api_key": API_KEY},
+                data=payload.image,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=20,
+            )
     except requests.exceptions.Timeout:
         raise HTTPException(status_code=504, detail="Timeout al conectar con Roboflow.")
     except requests.exceptions.RequestException as e:
-        logger.error(f"[Roboflow proxy] Error: {e}")
-        raise HTTPException(status_code=502, detail=f"Error al contactar Roboflow: {str(e)}")
+        logger.error(f"[Roboflow proxy] Error de red: {e}")
+        raise HTTPException(status_code=502, detail=f"Error de red al contactar Roboflow: {str(e)}")
+
+    if not rf_response.ok:
+        detail = rf_response.text[:300]
+        logger.error(f"[Roboflow proxy] HTTP {rf_response.status_code}: {detail}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Roboflow devolvió {rf_response.status_code}: {detail}"
+        )
 
     rf_data = rf_response.json()
 
-    # Extraer predicciones del formato de workflow o de inferencia directa
+    # Normalizar predicciones según el tipo de respuesta
     predictions = []
     if WORKSPACE and WORKFLOW:
-        # Workflow: { outputs: [ { <key>: { predictions: [...] } } ] }
-        # o directamente: [ { <key>: { predictions: [...] } } ]
+        # Workflow: { outputs: [{ <key>: { predictions: [...] } }] }
         first = None
         if isinstance(rf_data.get("outputs"), list) and rf_data["outputs"]:
             first = rf_data["outputs"][0]
@@ -1140,6 +1153,7 @@ async def roboflow_scan_proxy(payload: RoboflowScanRequest):
                     predictions = val
                     break
     else:
+        # Inferencia directa: { predictions: [...] }
         predictions = rf_data.get("predictions", [])
 
     return {"predictions": predictions}
