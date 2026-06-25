@@ -625,19 +625,70 @@ export default function ScanScreen() {
                     console.log('[AI] No se pudo conectar al servidor de IA:', aiError.message);
                 }
             } else {
-                // ── Modo: Roboflow (usar proxy del backend para evitar CORS) ──
-                const response = await fetch(`${ENV.API_BASE_URL}/scan`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: base64Data,
+                // ── Modo: Roboflow Workflow "Beach debris v1 Logic" ──────────
+                // Llamada directa al endpoint serverless del workflow.
+                // La respuesta es un array donde cada índice corresponde a una
+                // imagen enviada; cada entrada es un dict de outputs del workflow.
+                const rfBody = JSON.stringify({
+                    api_key: ROBOFLOW_API_KEY,
+                    inputs: {
+                        image: { type: 'base64', value: base64Data },
+                    },
                 });
-                
-                if (!response.ok) {
-                    console.log('Backend proxy error:', response.status);
+
+                let retries = 2;
+                let rfResponse;
+                while (retries >= 0) {
+                    try {
+                        rfResponse = await fetch(ROBOFLOW_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: rfBody,
+                            signal: AbortSignal.timeout(15000),
+                        });
+                        break;
+                    } catch (fetchErr) {
+                        if (retries === 0) throw fetchErr;
+                        retries--;
+                        await new Promise(r => setTimeout(r, 800));
+                    }
+                }
+
+                if (!rfResponse || !rfResponse.ok) {
+                    console.log('[Roboflow] Error HTTP:', rfResponse?.status);
                     return;
                 }
-                const data = await response.json();
-                apiPredictions = data.predictions || [];
+
+                const rfData = await rfResponse.json();
+
+                // Extraer predicciones del primer resultado del workflow.
+                // El workflow devuelve: { outputs: [ { <key>: { predictions: [...] }, ... } ] }
+                // o directamente: [ { <key>: { predictions: [...] } } ]
+                const firstResult = Array.isArray(rfData?.outputs)
+                    ? rfData.outputs[0]
+                    : Array.isArray(rfData)
+                        ? rfData[0]
+                        : rfData;
+
+                if (firstResult) {
+                    // Buscar defensivamente el primer valor que sea un objeto
+                    // con un array "predictions" dentro de los outputs del workflow.
+                    for (const val of Object.values(firstResult)) {
+                        if (val && Array.isArray(val.predictions)) {
+                            apiPredictions = val.predictions;
+                            break;
+                        }
+                        // Algunos workflows devuelven el array de predicciones directamente
+                        if (Array.isArray(val) && val.length > 0 && val[0]?.class) {
+                            apiPredictions = val;
+                            break;
+                        }
+                    }
+                }
+
+                console.log(`[Roboflow Workflow] Detectado: ${
+                    apiPredictions.map(p => `${p.class} ${Math.round((p.confidence ?? 0) * 100)}%`).join(', ') || 'nada'
+                }`);
             }
 
             const margin = 0; // Reducido a 0 para permitir predicciones cerca de los bordes
