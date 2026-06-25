@@ -23,6 +23,7 @@ export const GameProvider = ({ children }) => {
     const [level, setLevel] = useState(1);
     const [activeBeach, setActiveBeach] = useState(null);
     const [cleanupHistory, setCleanupHistory] = useState([]);
+    const [requireLocation, setRequireLocation] = useState(false);
     const [user, setUser] = useState({
         name: '...',
         email: '',
@@ -436,6 +437,8 @@ export const GameProvider = ({ children }) => {
             user,
             activeBeach,
             cleanupHistory,
+            requireLocation,
+            setRequireLocation,
             startCleanup,
             endCleanup,
             updateUserProfile,

@@ -28,13 +28,20 @@ app.add_middleware(
 )
 
 from dotenv import load_dotenv
-load_dotenv()
+# Cargar .env desde la raíz del proyecto (2 niveles arriba)
+import os
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+load_dotenv(os.path.join(project_root, '.env'))
 
 API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
 
-MODEL_ID = "ocean-waste/2"
-CONF = int(os.getenv("CONF", "40"))   # 0-100 (bajamos a 40 para más detecciones)
+# Configuración de Roboflow
+# Formato modelo directo: project/version (sin workspace)
+MODEL_ID = os.environ.get("ROBOFLOW_MODEL", "od-tpl/1")
+WORKSPACE = os.environ.get("ROBOFLOW_WORKSPACE", "")
+WORKFLOW = os.environ.get("ROBOFLOW_WORKFLOW", "")
+CONF = int(os.getenv("CONF", "90"))   # 0-100 (aumentado a 90 para reducir falsos positivos temporales)
 OVER = int(os.getenv("OVER", "50"))   # 0-100
 
 # Importar conexión a MongoDB
@@ -755,6 +762,10 @@ async def register_scanned_beach(user_id: str, request: Request):
 
 @app.post("/scan")
 async def scan(request: Request):
+    """
+    Proxy endpoint para Roboflow - soporta modelos directos y workflows.
+    Resuelve problemas de CORS al hacer el request desde el backend.
+    """
     # Leer el cuerpo raw (tal cual lo manda el frontend)
     body_bytes = await request.body()
     
@@ -764,34 +775,57 @@ async def scan(request: Request):
     
     logger.info(f"Received request body size: {len(body_bytes)} bytes")
     
-    # El frontend manda datos base64 crudos. 
-    # Roboflow acepta eso tal cual.
-    img = body_bytes
-    
-    # Determinar mime type (default jpeg si no se puede adivinar fácil)
-    # En este caso, lo tratamos como bytes crudos para reenviar a Roboflow.
-    # Roboflow infiere el tipo o acepta base64 puro.
-    
     # Header del request original
     content_type = request.headers.get("content-type", "")
     logger.info(f"Incoming Content-Type: {content_type}")
     
-    logger.info(f"Sending to Roboflow...")
-    
-    # Log de envío
-    logger.info(f"Sending to Roboflow directly (proxy pass-through)")
+    # Determinar si usar workflow o modelo directo
+    use_workflow = WORKSPACE and WORKFLOW
     
     try:
-        url = f"https://serverless.roboflow.com/{MODEL_ID}"
-        
-        # Enviamos el body tal cual arrivó (base64 string)
-        r = requests.post(
-            url,
-            params={"api_key": API_KEY, "confidence": CONF, "overlap": OVER},
-            data=img,  # Usamos 'data' para enviar el body raw, no 'files'
-            headers={"Content-Type": "application/x-www-form-urlencoded"}, # Replicamos header
-            timeout=30,
-        )
+        if use_workflow:
+            # Workflow endpoint: JSON con inputs
+            url = f"https://serverless.roboflow.com/{WORKSPACE}/workflows/{WORKFLOW}"
+            
+            # Decodificar base64 si viene como string
+            try:
+                body_str = body_bytes.decode('utf-8')
+                # Limpiar prefijo data:image si existe
+                if ',' in body_str:
+                    body_str = body_str.split(',')[1]
+                base64_data = body_str
+            except:
+                base64_data = body_bytes.decode('utf-8', errors='ignore')
+            
+            payload = {
+                "api_key": API_KEY,
+                "inputs": {
+                    "image": {
+                        "type": "base64",
+                        "value": base64_data
+                    }
+                }
+            }
+            
+            logger.info(f"Sending to Roboflow workflow: {url}")
+            r = requests.post(
+                url,
+                json=payload,
+                timeout=30,
+            )
+        else:
+            # Modelo directo: form-urlencoded (legacy)
+            url = f"https://serverless.roboflow.com/{MODEL_ID}"
+            img = body_bytes
+            
+            logger.info(f"Sending to Roboflow model: {url}")
+            r = requests.post(
+                url,
+                params={"api_key": API_KEY, "confidence": CONF, "overlap": OVER},
+                data=img,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=30,
+            )
         
         logger.info(f"Roboflow response status: {r.status_code}")
         logger.info(f"Roboflow response: {r.text[:500] if r.text else 'empty'}")
@@ -800,7 +834,21 @@ async def scan(request: Request):
             raise HTTPException(502, f"Roboflow {r.status_code}: {r.text}")
         
         data = r.json()
-        preds = data.get("predictions", []) or []
+        
+        # Extraer predicciones según el formato de respuesta
+        if use_workflow:
+            # Workflows retornan array de resultados
+            if isinstance(data, list) and len(data) > 0:
+                first_result = data[0]
+                if isinstance(first_result, dict):
+                    preds = first_result.get("predictions", []) or first_result.get("detections", [])
+                else:
+                    preds = []
+            else:
+                preds = []
+        else:
+            # Modelo directo legacy
+            preds = data.get("predictions", []) or []
         
         logger.info(f"Found {len(preds)} predictions")
         
@@ -811,7 +859,7 @@ async def scan(request: Request):
                 counts[cls] = counts.get(cls, 0) + 1
         
         return {
-            "image_sha256": hashlib.sha256(img).hexdigest(),
+            "image_sha256": hashlib.sha256(body_bytes).hexdigest(),
             "counts": counts,
             "predictions": preds,
         }

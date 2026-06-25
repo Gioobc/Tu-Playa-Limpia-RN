@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, ActivityIndicator, useWindowDimensions, Alert, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, ActivityIndicator, useWindowDimensions, Alert, TouchableOpacity, Platform, Switch } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import Animated, {
     useSharedValue,
@@ -20,6 +21,7 @@ import Animated, {
     FadeOutDown,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Svg, Polygon } from 'react-native-svg';
 import { useGame } from '../context/GameContext';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -33,6 +35,19 @@ import CelebrationModal from '../components/CelebrationModal';
 import ENV from '../constants/env';
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const { width, height } = Dimensions.get('window');
+
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Radius of the earth in km
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 const getScannerSize = () => {
     const baseSize = Math.min(SCREEN.width, SCREEN.height) * 0.7;
     return Math.min(baseSize, 350);
@@ -216,8 +231,13 @@ const PermissionScreen = ({ onRequestPermission, isDark }) => {
     );
 };
 const ROBOFLOW_API_KEY = ENV.ROBOFLOW_API_KEY;
+const ROBOFLOW_WORKSPACE = ENV.ROBOFLOW_WORKSPACE;
+const ROBOFLOW_WORKFLOW = ENV.ROBOFLOW_WORKFLOW;
 const ROBOFLOW_MODEL = ENV.ROBOFLOW_MODEL;
-const ROBOFLOW_URL = `https://serverless.roboflow.com/${ROBOFLOW_MODEL}`;
+// Usar workflow endpoint si está configurado, sino fallback a modelo directo
+const ROBOFLOW_URL = ROBOFLOW_WORKSPACE && ROBOFLOW_WORKFLOW
+  ? `https://serverless.roboflow.com/${ROBOFLOW_WORKSPACE}/workflows/${ROBOFLOW_WORKFLOW}`
+  : `https://serverless.roboflow.com/${ROBOFLOW_MODEL}`;
 // API de IA propia — api_ia.py corriendo en el servidor
 const AI_API_URL = ENV.AI_API_URL;        // e.g. http://192.168.100.45:5000
 const USE_OWN_AI = ENV.USE_OWN_AI;        // true = modelo propio, false = Roboflow
@@ -238,34 +258,77 @@ const DetectionBox = ({ prediction, frameSize, imageSize }) => {
     const { t } = useLanguage();
     const scaleX = frameSize / imageSize.width;
     const scaleY = frameSize / imageSize.height;
-    const boxWidth = prediction.width * scaleX;
-    const boxHeight = prediction.height * scaleY;
-    const left = (prediction.x * scaleX) - (boxWidth / 2);
-    const top = (prediction.y * scaleY) - (boxHeight / 2);
     const mapping = CLASS_MAPPING[prediction.class.toLowerCase()] || { label: prediction.class, color: '#22c55e' };
     const label = mapping.labelKey ? t(mapping.labelKey) : (mapping.label || prediction.class);
     const confidence = Math.round(prediction.confidence * 100);
-    return (
-        <Animated.View
-            entering={FadeIn.duration(200)}
-            style={[
-                styles.detectionBox,
-                {
-                    left,
-                    top,
-                    width: boxWidth,
-                    height: boxHeight,
-                    borderColor: mapping.color,
-                }
-            ]}
-        >
-            <View style={[styles.detectionLabel, { backgroundColor: mapping.color }]}>
-                <Text style={styles.detectionLabelText}>
-                    {label} {confidence}%
-                </Text>
-            </View>
-        </Animated.View>
-    );
+
+    // Usar puntos del polígono si están disponibles, sino usar bounding box
+    const hasPoints = prediction.points && prediction.points.length > 0;
+    
+    if (hasPoints) {
+        // Dibujar polígono con SVG
+        const polygonPoints = prediction.points.map(p => 
+            `${p.x * scaleX},${p.y * scaleY}`
+        ).join(' ');
+
+        return (
+            <Animated.View
+                entering={FadeIn.duration(200)}
+                style={[
+                    styles.detectionBox,
+                    {
+                        left: 0,
+                        top: 0,
+                        width: frameSize,
+                        height: frameSize,
+                        borderColor: 'transparent',
+                    }
+                ]}
+            >
+                <Svg width={frameSize} height={frameSize}>
+                    <Polygon
+                        points={polygonPoints}
+                        fill="transparent"
+                        stroke={mapping.color}
+                        strokeWidth={3}
+                    />
+                </Svg>
+                <View style={[styles.detectionLabel, { backgroundColor: mapping.color, top: prediction.points[0].y * scaleY - 30, left: prediction.points[0].x * scaleX }]}>
+                    <Text style={styles.detectionLabelText}>
+                        {label} {confidence}%
+                    </Text>
+                </View>
+            </Animated.View>
+        );
+    } else {
+        // Fallback a bounding box rectangular
+        const boxWidth = prediction.width * scaleX;
+        const boxHeight = prediction.height * scaleY;
+        const left = (prediction.x * scaleX) - (boxWidth / 2);
+        const top = (prediction.y * scaleY) - (boxHeight / 2);
+        
+        return (
+            <Animated.View
+                entering={FadeIn.duration(200)}
+                style={[
+                    styles.detectionBox,
+                    {
+                        left,
+                        top,
+                        width: boxWidth,
+                        height: boxHeight,
+                        borderColor: mapping.color,
+                    }
+                ]}
+            >
+                <View style={[styles.detectionLabel, { backgroundColor: mapping.color }]}>
+                    <Text style={styles.detectionLabelText}>
+                        {label} {confidence}%
+                    </Text>
+                </View>
+            </Animated.View>
+        );
+    }
 };
 const DetectionPanel = ({ counts, totalPoints, isDark }) => {
     const { t } = useLanguage();
@@ -386,7 +449,7 @@ const LastScanInfoPanel = ({ scanInfo, isDark, onDismiss }) => {
     );
 };
 export default function ScanScreen() {
-    const { scanItem, activeBeach, endCleanup, syncTPLToBlockchain, scannedItems, points, updateUserProfile, user } = useGame();
+    const { scanItem, activeBeach, endCleanup, syncTPLToBlockchain, scannedItems, points, updateUserProfile, user, requireLocation, setRequireLocation } = useGame();
     const { mongoUserId } = useAuth(); // Import useAuth to check mongoUserId
     const { address: walletAddress } = useWallet();
     const { colors, isDark } = useTheme();
@@ -419,6 +482,7 @@ export default function ScanScreen() {
     const [showCelebration, setShowCelebration] = useState(false);
     const [celebrationMessage, setCelebrationMessage] = useState('');
     const [showAdminNotice, setShowAdminNotice] = useState(false);
+    const [isValidatingLocation, setIsValidatingLocation] = useState(false);
     const [pendingReclaim, setPendingReclaim] = useState(null);
     const scannerSize = getScannerSize();
     const waterGradient = isDark
@@ -469,6 +533,49 @@ export default function ScanScreen() {
     // Real-time scan function — usa modelo propio (api_ia.py) o Roboflow como fallback
     const performScan = async () => {
         if (!cameraRef.current || isScanning || !activeBeach) return;
+
+        // Validación de ubicación si está activado el toggle
+        if (requireLocation) {
+            setIsValidatingLocation(true);
+            try {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status !== 'granted') {
+                    Alert.alert(
+                        t('location_permission_required_title') || "Ubicación Requerida",
+                        t('location_permission_required_desc') || "Tu Playa Limpia necesita acceder a tu ubicación en tiempo real para verificar que te encuentras físicamente en la playa seleccionada."
+                    );
+                    setIsValidatingLocation(false);
+                    return;
+                }
+
+                const location = await Location.getCurrentPositionAsync({
+                    accuracy: Location.Accuracy.Balanced,
+                });
+                
+                const { latitude, longitude } = location.coords;
+                const distance = calculateDistance(latitude, longitude, activeBeach.lat, activeBeach.lng);
+                
+                // 200 metros = 0.2 km
+                if (distance > 0.2) {
+                    Alert.alert(
+                        t('out_of_perimeter_title') || "Fuera de Perímetro",
+                        (t('out_of_perimeter_desc') || "No te encuentras dentro del perímetro de 200 metros de esta playa ({beachName}). Por favor, acércate físicamente a la playa para escanear.").replace('{beachName}', activeBeach.name)
+                    );
+                    setIsValidatingLocation(false);
+                    return;
+                }
+            } catch (err) {
+                console.error("Error validating location:", err);
+                Alert.alert(
+                    t('location_error_title') || "Error de Ubicación",
+                    t('location_error_desc') || "Ocurrió un error al intentar verificar tu ubicación. Inténtalo de nuevo."
+                );
+                setIsValidatingLocation(false);
+                return;
+            }
+            setIsValidatingLocation(false);
+        }
+
         setIsScanning(true);
         try {
             // Capturar foto de la cámara
@@ -518,24 +625,22 @@ export default function ScanScreen() {
                     console.log('[AI] No se pudo conectar al servidor de IA:', aiError.message);
                 }
             } else {
-                // ── Modo: Roboflow (fallback) ───────────────────────────────
-                const response = await fetch(
-                    `${ROBOFLOW_URL}?api_key=${ROBOFLOW_API_KEY}&confidence=${CONFIDENCE_THRESHOLD}&overlap=50`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: base64Data,
-                    }
-                );
+                // ── Modo: Roboflow (usar proxy del backend para evitar CORS) ──
+                const response = await fetch(`${ENV.API_BASE_URL}/scan`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: base64Data,
+                });
+                
                 if (!response.ok) {
-                    console.log('Roboflow error:', response.status);
+                    console.log('Backend proxy error:', response.status);
                     return;
                 }
                 const data = await response.json();
                 apiPredictions = data.predictions || [];
             }
 
-            const margin = 10;
+            const margin = 0; // Reducido a 0 para permitir predicciones cerca de los bordes
             const imgW = photo.width;
             const imgH = photo.height;
             apiPredictions = apiPredictions.filter(p => {
@@ -547,8 +652,8 @@ export default function ScanScreen() {
                 const maxX = x + w / 2;
                 const minY = y - h / 2;
                 const maxY = y + h / 2;
-                const safelyInside = minX > margin && maxX < (imgW - margin) &&
-                    minY > margin && maxY < (imgH - margin);
+                const safelyInside = minX >= margin && maxX <= (imgW - margin) &&
+                    minY >= margin && maxY <= (imgH - margin);
                 return safelyInside;
             });
             setPredictions(apiPredictions);
@@ -1058,6 +1163,30 @@ export default function ScanScreen() {
                             </Text>
                         </Pressable>
                     </View>
+                    { }
+                    <Animated.View entering={FadeInUp.delay(200).springify()} style={[
+                        styles.locationToggleRow,
+                        {
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.1)',
+                            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: 1,
+                        }
+                    ]}>
+                        <View style={{ flex: 1, paddingRight: rs(12) }}>
+                            <Text style={[styles.locationToggleLabel, { color: '#fff' }]}>
+                                {t('validate_location_label') || "Validar ubicación"}
+                            </Text>
+                            <Text style={[styles.locationToggleSublabel, { color: 'rgba(255,255,255,0.7)' }]}>
+                                {t('validate_location_desc') || "Verifica que estés a 200m de la playa"}
+                            </Text>
+                        </View>
+                        <Switch
+                            value={requireLocation}
+                            onValueChange={setRequireLocation}
+                            trackColor={{ false: '#767577', true: colors.primary }}
+                            thumbColor={requireLocation ? '#fff' : '#f4f3f4'}
+                        />
+                    </Animated.View>
                 </LinearGradient>
             </SafeAreaView>
 
@@ -1421,6 +1550,22 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: rf(12),
         fontWeight: '600',
+    },
+    locationToggleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: SPACING.md,
+        borderRadius: RADIUS.lg,
+        marginTop: SPACING.md,
+    },
+    locationToggleLabel: {
+        fontSize: rf(14),
+        fontWeight: '600',
+        marginBottom: rs(2),
+    },
+    locationToggleSublabel: {
+        fontSize: rf(11),
+        lineHeight: rf(14),
     },
     lastScanPanel: {
         position: 'absolute',

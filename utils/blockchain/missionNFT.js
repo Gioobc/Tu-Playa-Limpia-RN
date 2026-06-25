@@ -25,7 +25,7 @@ export const mintNFT = async (missionId, tokenURI) => {
 };
 
 /**
- * Consulta la Blockchain de EDU Chain (vía ethers) usando eventos
+ * Consulta la Blockchain de SYS Chain (vía ethers) usando eventos
  * para recuperar todos los NFTs ERC-721 minteados por este Smart Contract
  * a favor del usuario.
  * @param {string} walletAddress La dirección de billetera del usuario.
