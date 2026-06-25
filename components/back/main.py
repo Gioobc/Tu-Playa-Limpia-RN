@@ -29,20 +29,23 @@ app.add_middleware(
 
 from dotenv import load_dotenv
 # Cargar .env desde la raíz del proyecto (2 niveles arriba)
+# override=True: los valores del .env sobreescriben variables de entorno ya seteadas en el OS
 import os
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-load_dotenv(os.path.join(project_root, '.env'))
+load_dotenv(os.path.join(project_root, '.env'), override=True)
 
 API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
 
 # Configuración de Roboflow
 # Formato modelo directo: project/version (sin workspace)
-MODEL_ID = os.environ.get("ROBOFLOW_MODEL", "od-tpl/1")
+MODEL_ID  = os.environ.get("ROBOFLOW_MODEL", "beach-debris-ozfdf/1")
 WORKSPACE = os.environ.get("ROBOFLOW_WORKSPACE", "")
-WORKFLOW = os.environ.get("ROBOFLOW_WORKFLOW", "")
-CONF = int(os.getenv("CONF", "90"))   # 0-100 (aumentado a 90 para reducir falsos positivos temporales)
-OVER = int(os.getenv("OVER", "50"))   # 0-100
+WORKFLOW  = os.environ.get("ROBOFLOW_WORKFLOW", "")
+CONF = int(os.getenv("CONF", "90"))
+OVER = int(os.getenv("OVER", "50"))
+
+logger.info(f"[config] MODEL_ID={MODEL_ID} | WORKSPACE='{WORKSPACE}' | WORKFLOW='{WORKFLOW}'")
 
 # Importar conexión a MongoDB
 try:
@@ -1158,3 +1161,5 @@ async def roboflow_scan_proxy(payload: RoboflowScanRequest):
 
     return {"predictions": predictions}
 
+
+# reload: 17:44:35
