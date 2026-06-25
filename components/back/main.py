@@ -1070,3 +1070,77 @@ async def get_database_status():
         "collection": "datosreportes",
         "timestamp": datetime.utcnow().isoformat()
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Proxy Roboflow — evita el bloqueo de CORS en modo web
+# El navegador no puede llamar directamente a serverless.roboflow.com,
+# así que este endpoint actúa de intermediario.
+# ──────────────────────────────────────────────────────────────────────────────
+class RoboflowScanRequest(BaseModel):
+    image: str  # base64 puro, sin prefijo data:image/...
+
+
+@app.post("/roboflow/scan")
+async def roboflow_scan_proxy(payload: RoboflowScanRequest):
+    """
+    Proxy para el Roboflow Workflow 'Beach debris v1 Logic'.
+    Recibe una imagen en base64 y la envía al workflow configurado.
+    Devuelve las predicciones en el mismo formato que usa ScanScreen.
+    """
+    if not API_KEY:
+        raise HTTPException(status_code=503, detail="ROBOFLOW_API_KEY no configurada en el servidor.")
+
+    # Construir URL del workflow o del modelo directo como fallback
+    if WORKSPACE and WORKFLOW:
+        rf_url = f"https://serverless.roboflow.com/{WORKSPACE}/workflows/{WORKFLOW}"
+        rf_body = {
+            "api_key": API_KEY,
+            "inputs": {
+                "image": {"type": "base64", "value": payload.image}
+            }
+        }
+    else:
+        rf_url = f"https://serverless.roboflow.com/{MODEL_ID}"
+        rf_body = {
+            "api_key": API_KEY,
+            "image": {"type": "base64", "value": payload.image}
+        }
+
+    try:
+        rf_response = requests.post(rf_url, json=rf_body, timeout=20)
+        rf_response.raise_for_status()
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=504, detail="Timeout al conectar con Roboflow.")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Roboflow proxy] Error: {e}")
+        raise HTTPException(status_code=502, detail=f"Error al contactar Roboflow: {str(e)}")
+
+    rf_data = rf_response.json()
+
+    # Extraer predicciones del formato de workflow o de inferencia directa
+    predictions = []
+    if WORKSPACE and WORKFLOW:
+        # Workflow: { outputs: [ { <key>: { predictions: [...] } } ] }
+        # o directamente: [ { <key>: { predictions: [...] } } ]
+        first = None
+        if isinstance(rf_data.get("outputs"), list) and rf_data["outputs"]:
+            first = rf_data["outputs"][0]
+        elif isinstance(rf_data, list) and rf_data:
+            first = rf_data[0]
+        elif isinstance(rf_data, dict):
+            first = rf_data
+
+        if first:
+            for val in first.values():
+                if isinstance(val, dict) and isinstance(val.get("predictions"), list):
+                    predictions = val["predictions"]
+                    break
+                if isinstance(val, list) and val and isinstance(val[0], dict) and "class" in val[0]:
+                    predictions = val
+                    break
+    else:
+        predictions = rf_data.get("predictions", [])
+
+    return {"predictions": predictions}
+

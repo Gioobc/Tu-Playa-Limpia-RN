@@ -626,26 +626,35 @@ export default function ScanScreen() {
                 }
             } else {
                 // ── Modo: Roboflow Workflow "Beach debris v1 Logic" ──────────
-                // Llamada directa al endpoint serverless del workflow.
-                // La respuesta es un array donde cada índice corresponde a una
-                // imagen enviada; cada entrada es un dict de outputs del workflow.
-                const rfBody = JSON.stringify({
-                    api_key: ROBOFLOW_API_KEY,
-                    inputs: {
-                        image: { type: 'base64', value: base64Data },
-                    },
-                });
+                // En web el navegador bloquea CORS → usamos el proxy del backend.
+                // En nativo (Android/iOS) llamamos directo a Roboflow sin restricción.
+                const isWeb = Platform.OS === 'web';
 
-                let retries = 2;
                 let rfResponse;
+                let retries = 2;
+
                 while (retries >= 0) {
                     try {
-                        rfResponse = await fetch(ROBOFLOW_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: rfBody,
-                            signal: AbortSignal.timeout(15000),
-                        });
+                        if (isWeb) {
+                            // Proxy backend: POST http://localhost:8000/roboflow/scan
+                            rfResponse = await fetch(`${ENV.API_BASE_URL}/roboflow/scan`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ image: base64Data }),
+                                signal: AbortSignal.timeout(20000),
+                            });
+                        } else {
+                            // Llamada directa al workflow de Roboflow (nativo)
+                            rfResponse = await fetch(ROBOFLOW_URL, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    api_key: ROBOFLOW_API_KEY,
+                                    inputs: { image: { type: 'base64', value: base64Data } },
+                                }),
+                                signal: AbortSignal.timeout(15000),
+                            });
+                        }
                         break;
                     } catch (fetchErr) {
                         if (retries === 0) throw fetchErr;
@@ -661,27 +670,29 @@ export default function ScanScreen() {
 
                 const rfData = await rfResponse.json();
 
-                // Extraer predicciones del primer resultado del workflow.
-                // El workflow devuelve: { outputs: [ { <key>: { predictions: [...] }, ... } ] }
-                // o directamente: [ { <key>: { predictions: [...] } } ]
-                const firstResult = Array.isArray(rfData?.outputs)
-                    ? rfData.outputs[0]
-                    : Array.isArray(rfData)
-                        ? rfData[0]
-                        : rfData;
+                if (isWeb) {
+                    // El proxy ya normaliza la respuesta → { predictions: [...] }
+                    apiPredictions = rfData.predictions || [];
+                } else {
+                    // Parseo defensivo de la respuesta del workflow
+                    // Formatos posibles: { outputs:[{<key>:{predictions:[...]}}] }
+                    // o directamente: [{<key>:{predictions:[...]}}]
+                    const firstResult = Array.isArray(rfData?.outputs)
+                        ? rfData.outputs[0]
+                        : Array.isArray(rfData)
+                            ? rfData[0]
+                            : rfData;
 
-                if (firstResult) {
-                    // Buscar defensivamente el primer valor que sea un objeto
-                    // con un array "predictions" dentro de los outputs del workflow.
-                    for (const val of Object.values(firstResult)) {
-                        if (val && Array.isArray(val.predictions)) {
-                            apiPredictions = val.predictions;
-                            break;
-                        }
-                        // Algunos workflows devuelven el array de predicciones directamente
-                        if (Array.isArray(val) && val.length > 0 && val[0]?.class) {
-                            apiPredictions = val;
-                            break;
+                    if (firstResult) {
+                        for (const val of Object.values(firstResult)) {
+                            if (val && Array.isArray(val.predictions)) {
+                                apiPredictions = val.predictions;
+                                break;
+                            }
+                            if (Array.isArray(val) && val.length > 0 && val[0]?.class) {
+                                apiPredictions = val;
+                                break;
+                            }
                         }
                     }
                 }
