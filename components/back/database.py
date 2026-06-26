@@ -164,7 +164,7 @@ class MongoDBConnection:
         """Buscar usuario por address de wallet"""
         try:
             collection = self.get_user_collection()
-            return collection.find_one({"address": address})
+            return collection.find_one({"address": {"$regex": f"^{address}$", "$options": "i"}})
         except Exception as e:
             logger.error(f"❌ Error buscando usuario por address: {e}")
             return None

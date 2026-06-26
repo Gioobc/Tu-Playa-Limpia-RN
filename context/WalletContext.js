@@ -46,8 +46,9 @@ export function WalletProvider({ children }) {
         if (storedUser) {
           const userData = JSON.parse(storedUser);
           if (userData.walletAddress) {
-            console.log("♻️ Restoring session for:", userData.walletAddress);
-            setAddress(userData.walletAddress);
+            const normalizedAddress = userData.walletAddress.toLowerCase();
+            console.log("♻️ Restoring session for:", normalizedAddress);
+            setAddress(normalizedAddress);
             if (storedType) setConnectedWalletType(storedType);
 
             // Trigger reload in GameContext
@@ -69,12 +70,13 @@ export function WalletProvider({ children }) {
       const storedUser = await AsyncStorage.getItem('@tpl_game_user_meta');
       const userData = storedUser ? JSON.parse(storedUser) : {};
 
-      const updatedUser = { ...userData, walletAddress: walletAddress };
+      const normalizedAddress = walletAddress.toLowerCase();
+      const updatedUser = { ...userData, walletAddress: normalizedAddress };
       await AsyncStorage.setItem('@tpl_game_user_meta', JSON.stringify(updatedUser));
 
       // Global event to trigger reload in GameContext, etc.
       DeviceEventEmitter.emit('TPL_ACCOUNT_IMPORTED');
-      console.log("📡 App state synced with wallet address:", walletAddress);
+      console.log("📡 App state synced with wallet address:", normalizedAddress);
     } catch (e) {
       console.warn("Error syncing wallet with storage:", e);
     }
@@ -87,7 +89,8 @@ export function WalletProvider({ children }) {
 
   const resolveWalletOwner = async (walletAddress) => {
     const apiUrl = ENV.API_BASE_URL
-    const response = await fetch(`${apiUrl}/api/users/address/${encodeURIComponent(walletAddress)}`)
+    const normalizedAddress = walletAddress.toLowerCase()
+    const response = await fetch(`${apiUrl}/api/users/address/${encodeURIComponent(normalizedAddress)}`)
     if (response.status === 404) return null
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
@@ -100,10 +103,11 @@ export function WalletProvider({ children }) {
   const persistWalletAddress = async (walletAddress) => {
     if (!mongoUserId) return
     const apiUrl = ENV.API_BASE_URL
+    const normalizedAddress = walletAddress.toLowerCase()
     const response = await fetch(`${apiUrl}/api/users/${mongoUserId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address: walletAddress })
+      body: JSON.stringify({ address: normalizedAddress })
     })
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
@@ -113,15 +117,22 @@ export function WalletProvider({ children }) {
   }
 
   const askToUseExistingAccount = (existingUser) => new Promise((resolve) => {
-    Alert.alert(
-      'Address ya vinculada',
-      `Esta address ya está asociada a la cuenta de ${existingUser.username}. Si continúas, se abrirá esa cuenta.`,
-      [
-        { text: 'Cancelar', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Vincular a esa cuenta', onPress: () => resolve(true) },
-      ],
-      { cancelable: false }
-    )
+    if (Platform.OS === 'web') {
+      const shouldSwitch = window.confirm(
+        `Address ya vinculada\n\nEsta address ya está asociada a la cuenta de ${existingUser.username}. Si continúas, se abrirá esa cuenta. ¿Deseas vincular a esa cuenta?`
+      )
+      resolve(shouldSwitch)
+    } else {
+      Alert.alert(
+        'Address ya vinculada',
+        `Esta address ya está asociada a la cuenta de ${existingUser.username}. Si continúas, se abrirá esa cuenta.`,
+        [
+          { text: 'Cancelar', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Vincular a esa cuenta', onPress: () => resolve(true) },
+        ],
+        { cancelable: false }
+      )
+    }
   })
 
   const finalizeWalletConnection = async ({ walletAddress, walletType, ethersProvider, walletSigner }) => {
@@ -229,19 +240,31 @@ export function WalletProvider({ children }) {
 
       const signer = await ethersProvider.getSigner()
       const address = await signer.getAddress()
+      const normalizedAddress = address.toLowerCase()
 
       const connected = await finalizeWalletConnection({
-        walletAddress: address,
+        walletAddress: normalizedAddress,
         walletType: 'metamask',
         ethersProvider,
         walletSigner: signer,
       })
       if (connected) {
-        console.log("🦊 MetaMask conectado:", address)
+        console.log("🦊 MetaMask conectado:", normalizedAddress)
       }
 
     } catch (err) {
       console.log("MetaMask connection error:", err)
+      let userFriendlyMsg = "Error al conectar con MetaMask. Por favor, inténtalo de nuevo."
+      if (err && typeof err === 'object') {
+        if (err.code === 4001) {
+          userFriendlyMsg = "Conexión cancelada por el usuario."
+        } else if (err.code === -32002 || (err.message && err.message.includes("-32002")) || (err.message && err.message.includes("already pending"))) {
+          userFriendlyMsg = "Ya hay una solicitud de conexión pendiente. Por favor, abre la extensión de MetaMask manualmente desde la barra de herramientas del navegador para completarla o desbloquearla."
+        } else if (err.message) {
+          userFriendlyMsg = `Error de conexión: ${err.message}`
+        }
+      }
+      alert(userFriendlyMsg)
     }
   }
 
@@ -270,19 +293,29 @@ export function WalletProvider({ children }) {
 
       const signer = ethersProvider.getSigner ? await ethersProvider.getSigner() : await ethersProvider.getSigner();
       const address = signer.getAddress ? await signer.getAddress() : await signer.address;
+      const normalizedAddress = address.toLowerCase()
 
       const connected = await finalizeWalletConnection({
-        walletAddress: address,
+        walletAddress: normalizedAddress,
         walletType: 'walletconnect',
         ethersProvider,
         walletSigner: signer,
       })
       if (connected) {
-        console.log("📱 WalletConnect conectado:", address)
+        console.log("📱 WalletConnect conectado:", normalizedAddress)
       }
 
     } catch (err) {
       console.log("WalletConnect error:", err)
+      let userFriendlyMsg = "Error al conectar con WalletConnect. Por favor, inténtalo de nuevo."
+      if (err && typeof err === 'object') {
+        if (err.code === 4001) {
+          userFriendlyMsg = "Conexión cancelada por el usuario."
+        } else if (err.message) {
+          userFriendlyMsg = `Error de conexión: ${err.message}`
+        }
+      }
+      alert(userFriendlyMsg)
     }
   }
 
@@ -321,19 +354,31 @@ export function WalletProvider({ children }) {
 
       const signer = ethersProvider.getSigner ? await ethersProvider.getSigner() : await ethersProvider.getSigner();
       const address = signer.getAddress ? await signer.getAddress() : await signer.address;
+      const normalizedAddress = address.toLowerCase()
 
       const connected = await finalizeWalletConnection({
-        walletAddress: address,
+        walletAddress: normalizedAddress,
         walletType: 'pali',
         ethersProvider,
         walletSigner: signer,
       })
       if (connected) {
-        console.log("🟢 Pali Wallet conectado:", address);
+        console.log("🟢 Pali Wallet conectado:", normalizedAddress);
       }
 
     } catch (err) {
       console.log("Pali connection error:", err);
+      let userFriendlyMsg = "Error al conectar con Pali Wallet. Por favor, inténtalo de nuevo."
+      if (err && typeof err === 'object') {
+        if (err.code === 4001) {
+          userFriendlyMsg = "Conexión cancelada por el usuario."
+        } else if (err.code === -32002 || (err.message && err.message.includes("-32002")) || (err.message && err.message.includes("already pending"))) {
+          userFriendlyMsg = "Ya hay una solicitud de conexión pendiente. Por favor, abre la extensión de Pali Wallet manualmente desde la barra de herramientas del navegador para completarla o desbloquearla."
+        } else if (err.message) {
+          userFriendlyMsg = `Error de conexión: ${err.message}`
+        }
+      }
+      alert(userFriendlyMsg)
     }
   }
 

@@ -530,6 +530,8 @@ async def update_user(user_id: str, updates: dict):
             raise HTTPException(400, "No valid fields to update")
 
         if "address" in filtered_updates and filtered_updates["address"]:
+            # Normalizar address a minúsculas
+            filtered_updates["address"] = filtered_updates["address"].lower()
             existing_address_user = db_connection.find_user_by_address(filtered_updates["address"])
             if existing_address_user and existing_address_user.get("_id") != user_id:
                 raise HTTPException(409, "La address ya está asociada a otra cuenta")
