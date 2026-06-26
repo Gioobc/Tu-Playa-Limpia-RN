@@ -18,6 +18,9 @@ MONGODB_URI=mongodb+srv://USUARIO:PASSWORD@cluster.mongodb.net/DATABASE
 DATABASE_NAME=tplreportes
 API_PORT=8000
 ROBOFLOW_API_KEY=tu_clave_api
+ROBOFLOW_WORKSPACE=chakaloca000-gmail-com
+ROBOFLOW_WORKFLOW=beach-debris-v1-logic
+ROBOFLOW_MODEL=beach-debris-subok/1
 ```
 
 ### 3️⃣ Ejecutar el Servidor

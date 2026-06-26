@@ -813,16 +813,24 @@ async def scan(request: Request):
             }
             
             logger.info(f"Sending to Roboflow workflow: {url}")
-            r = requests.post(
-                url,
-                json=payload,
-                timeout=30,
-            )
-        else:
-            # Modelo directo: form-urlencoded (legacy)
-            url = f"https://serverless.roboflow.com/{MODEL_ID}"
-            img = body_bytes
+            r = requests.post(url, json=payload, timeout=30)
             
+            # Si el workflow falla por bugs internos (ej. 500 Model ID binding error), usamos fallback
+            if r.status_code != 200:
+                logger.warning(f"Workflow failed with {r.status_code}: {r.text[:200]}. Falling back to direct model.")
+                use_workflow = False
+        
+        if not use_workflow:
+            # Fallback al modelo directo si el workflow falla o no está configurado
+            url = f"https://serverless.roboflow.com/{MODEL_ID}"
+            # Roboflow v1 endpoint para modelos usa form-urlencoded o param + body crudo
+            try:
+                b64 = body_bytes.decode('utf-8')
+                if ',' in b64: b64 = b64.split(',')[1]
+                img = b64
+            except:
+                img = body_bytes
+                
             logger.info(f"Sending to Roboflow model: {url}")
             r = requests.post(
                 url,
@@ -833,24 +841,26 @@ async def scan(request: Request):
             )
         
         logger.info(f"Roboflow response status: {r.status_code}")
-        logger.info(f"Roboflow response: {r.text[:500] if r.text else 'empty'}")
         
         if r.status_code != 200:
-            raise HTTPException(502, f"Roboflow {r.status_code}: {r.text}")
+            raise HTTPException(502, f"Roboflow {r.status_code}: {r.text[:200]}")
         
         data = r.json()
         
-        # Extraer predicciones según el formato de respuesta
+        # Extraer predicciones defensivamente
+        preds = []
         if use_workflow:
-            # Workflows retornan array de resultados
-            if isinstance(data, list) and len(data) > 0:
-                first_result = data[0]
-                if isinstance(first_result, dict):
-                    preds = first_result.get("predictions", []) or first_result.get("detections", [])
-                else:
-                    preds = []
-            else:
-                preds = []
+            # Workflows retornan array de resultados o un dict con outputs
+            first_result = data.get("outputs", [data])[0] if isinstance(data, dict) and "outputs" in data else (data[0] if isinstance(data, list) and len(data) > 0 else data)
+            
+            if first_result and isinstance(first_result, dict):
+                for val in first_result.values():
+                    if isinstance(val, dict) and "predictions" in val:
+                        preds = val["predictions"]
+                        break
+                    elif isinstance(val, list) and len(val) > 0 and "class" in val[0]:
+                        preds = val
+                        break
         else:
             # Modelo directo legacy
             preds = data.get("predictions", []) or []
@@ -1094,6 +1104,7 @@ async def roboflow_scan_proxy(payload: RoboflowScanRequest):
     - Si solo MODEL está configurado: usa inferencia directa (modelo).
     Devuelve { predictions: [...] } normalizado para ScanScreen.
     """
+    logger.info(f"[Roboflow proxy] Request received. API_KEY={API_KEY[:4]}...{API_KEY[-4:] if API_KEY else 'NONE'} | MODEL_ID={MODEL_ID} | WORKSPACE={WORKSPACE} | WORKFLOW={WORKFLOW}")
     if not API_KEY:
         raise HTTPException(status_code=503, detail="ROBOFLOW_API_KEY no configurada en el servidor.")
 

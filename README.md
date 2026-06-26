@@ -82,3 +82,4 @@ python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 - El backend de reportes usa MongoDB y expone endpoints para salud, guardado y consulta de reportes.
 - Si la app se usa en desarrollo local, normalmente el frontend apunta a `http://localhost:8000` como API.
 - La integración de wallet y recompensas forma parte de la experiencia de usuario, no de una demo aislada.
+- La inferencia con IA para escaneo de basura utiliza la integración de **Roboflow**. El cliente de Roboflow (`utils/roboflowClient.js`) es robusto, manejando tiempos de espera, reintentos con retraso exponencial, y fallback al modelo directo en caso de errores en los endpoints de Workflow. Asegúrate de configurar tus llaves `EXPO_PUBLIC_ROBOFLOW_*` en el `.env`.
