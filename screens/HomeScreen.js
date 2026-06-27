@@ -73,7 +73,7 @@ const ActionItem = ({ icon, label, delay = 0, onPress, customWidth }) => {
         </AnimatedPressable>
     );
 };
-const BalanceCard = ({ onRedeem, balance, nfts }) => {
+const BalanceCard = ({ onRedeem, balance, gamePoints, nfts }) => {
     const { colors, shadows, isDark } = useTheme();
     const { t } = useLanguage();
     const balanceScale = useSharedValue(1);
@@ -113,7 +113,7 @@ const BalanceCard = ({ onRedeem, balance, nfts }) => {
                             <Text style={styles.redeemButtonText}>{t('home_redeem_tpl')}</Text>
                         </TouchableOpacity>
                     </View>
-                    <Text style={styles.balanceValue}>{balance !== null ? balance : '0'} TPL</Text>
+                    <Text style={styles.balanceValue}>{balance} TPL</Text>
                     <View style={styles.statsRow}>
                         <View style={styles.statItem}>
                             <Text style={styles.statValue}>{nfts.length}</Text>
@@ -121,7 +121,7 @@ const BalanceCard = ({ onRedeem, balance, nfts }) => {
                         </View>
                         <View style={styles.statDivider} />
                         <View style={styles.statItem}>
-                            <Text style={styles.statValue}>{balance !== null ? balance : '0'}</Text>
+                            <Text style={styles.statValue}>{gamePoints}</Text>
                             <Text style={styles.statLabel}>{t('home_points')}</Text>
                         </View>
                     </View>
@@ -169,24 +169,28 @@ export default function HomeScreen() {
     const navigation = useNavigation();
     const { user, points, nfts, level, updateUserProfile, syncTPLToBlockchain } = useGame();
     const { username } = useAuth();
-    const { address, provider: walletProvider } = useWallet();
+    const { address } = useWallet();
     const { colors, shadows, isDark } = useTheme();
     const { t, language } = useLanguage();
     const { width } = useWindowDimensions();
     const isDesktop = width >= 1024;
     const [showRedeemModal, setShowRedeemModal] = React.useState(false);
     const [tplBalance, setTplBalance] = React.useState(null);
+
+    const refreshTplBalance = React.useCallback(async () => {
+        if (address) {
+            const bal = await fetchTPLBalance(address);
+            setTplBalance(parseFloat(bal));
+        } else {
+            setTplBalance(0);
+        }
+    }, [address]);
+
     useEffect(() => {
-        const getBalance = async () => {
-            if (address && walletProvider) {
-                const bal = await fetchTPLBalance(address, walletProvider);
-                setTplBalance(parseFloat(bal));
-            } else {
-                setTplBalance(0);
-            }
-        };
-        getBalance();
-    }, [address, walletProvider]);
+        refreshTplBalance();
+    }, [address, points, refreshTplBalance]);
+
+    const displayBalance = tplBalance !== null && tplBalance > 0 ? tplBalance : points;
     const handleTitleUpdate = (newTitle) => {
         updateUserProfile({ tplTitle: newTitle });
         setShowRedeemModal(false);
@@ -254,7 +258,8 @@ export default function HomeScreen() {
                         <View style={isDesktop ? { flex: 0.4, marginRight: SPACING.xl } : { width: '100%' }}>
                             <BalanceCard
                                 onRedeem={() => setShowRedeemModal(true)}
-                                balance={tplBalance}
+                                balance={displayBalance}
+                                gamePoints={points}
                                 nfts={nfts}
                             />
                             {!isDesktop && <NoticeBanner />}
@@ -307,7 +312,7 @@ export default function HomeScreen() {
             <TPLRedeemModal
                 visible={showRedeemModal}
                 onClose={() => setShowRedeemModal(false)}
-                points={tplBalance !== null ? tplBalance : 0}
+                points={displayBalance}
                 currentTitle={user.tplTitle}
                 onUpdateTitle={handleTitleUpdate}
             />

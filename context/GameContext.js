@@ -33,6 +33,7 @@ export const GameProvider = ({ children }) => {
         tplTitle: 'Cleanup Rookie',
     });
     const unlockingSet = useRef(new Set());
+    const tplSyncInProgressRef = useRef(false);
     const loadGameState = async () => {
         try {
             const [storedPoints, storedItems, storedNfts, storedUser, storedCleanupHistory, storedRegDate, storedUsername] = await Promise.all([
@@ -219,17 +220,6 @@ export const GameProvider = ({ children }) => {
         AsyncStorage.setItem(GAME_KEYS.CLEANUP_HISTORY, JSON.stringify(cleanupHistory)).catch(() => { });
     }, [cleanupHistory]);
 
-    // Automatic Sync to Blockchain when milestones are reached
-    useEffect(() => {
-        const autoSync = async () => {
-            // Solo sincronizar si hay wallet y múltiplos de 5 puntos para coincidir con el primer título
-            if (user.walletAddress && points > 0 && points % 5 === 0) {
-                console.log(`🎯 Milestone alcanzado: ${points} TPL. Sincronizando automáticamente...`);
-                await syncTPLToBlockchain();
-            }
-        };
-        autoSync();
-    }, [points, user.walletAddress]);
     const generateNFTHash = () => {
         return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-6);
     };
@@ -289,7 +279,11 @@ export const GameProvider = ({ children }) => {
         const SCORING = { bottle: 5, can: 3, trash: 1 };
         const value = customPoints !== null ? customPoints : (SCORING[type] || 0);
 
-        setPoints(prev => prev + value);
+        let newPoints = 0;
+        setPoints(prev => {
+            newPoints = prev + value;
+            return newPoints;
+        });
         
         // Update scanned items state
         setScannedItems(prev => {
@@ -329,7 +323,7 @@ export const GameProvider = ({ children }) => {
             });
         }
 
-        return { value };
+        return { value, newPoints };
     };
     const startCleanup = (beach) => {
         setActiveBeach(beach);
@@ -338,27 +332,35 @@ export const GameProvider = ({ children }) => {
         setActiveBeach(null);
     };
 
-    const syncTPLToBlockchain = async (amount = null) => {
-        const mintAmount = amount !== null ? amount : points;
-        if (!user.walletAddress || mintAmount <= 0) return { success: false, error: 'No wallet or points to sync' };
+    const syncTPLToBlockchain = async (amount) => {
+        if (!amount || amount <= 0) return { success: false, error: 'Cantidad de mint inválida' };
+        if (!user.walletAddress) return { success: false, error: 'No wallet connected' };
 
+        if (tplSyncInProgressRef.current) {
+            console.warn('[TPL] Sync ya en progreso, omitiendo solicitud duplicada.');
+            return { success: false, error: 'Sync in progress' };
+        }
+
+        tplSyncInProgressRef.current = true;
         try {
-            console.log(`📡 Iniciando sincronización de ${mintAmount} TPL a la Blockchain...`);
-            // Prioridad: Variable de entorno > Localhost (si estamos en dev) > Fallback Vercel
-            const appUrl = ENV.APP_URL;
+            console.log(`📡 Iniciando sincronización de ${amount} TPL a la Blockchain...`);
 
-            const response = await fetch(`${appUrl}/api/mint-tpl`, {
+            const response = await fetch(`${ENV.API_BASE_URL}/api/mint-tpl`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     address: user.walletAddress,
-                    amount: mintAmount
+                    amount,
                 }),
             });
 
-            const data = await response.json();
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(data.detail || data.details || data.error || `HTTP ${response.status}`);
+            }
 
             if (data.success) {
                 console.log('✅ Puntos sincronizados con éxito:', data.hash);
@@ -373,6 +375,8 @@ export const GameProvider = ({ children }) => {
         } catch (error) {
             console.error('❌ Error sincronizando TPL:', error);
             return { success: false, error: error.message };
+        } finally {
+            tplSyncInProgressRef.current = false;
         }
     };
 

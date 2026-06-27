@@ -17,7 +17,12 @@ import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
 import translations, { REWARDS_CLAIM_LABELS } from '../constants/translations';
 import { useWallet } from '../context/WalletContext';
-import { handleClaim, disconnectWalletConnect } from '../utils/nftGenerator';
+import {
+    handleClaim,
+    disconnectWalletConnect,
+    waitForTransactionConfirmation,
+    saveClaimedNftRecord,
+} from '../utils/nftGenerator';
 import { BRAND, GRADIENTS } from '../constants/theme';
 import { rs, rf, rh, SPACING, RADIUS, SCREEN } from '../constants/responsive';
 import NFTMiniCard from '../components/NFTMiniCard';
@@ -67,7 +72,7 @@ const CelebrationModal = ({ visible, onClose, nft }) => {
 };
 
 // ─── Modal de confirmación de transacción ──────────────────────────────────
-const EXPLORER_URL = 'https://explorer-zk.tanenbaum.io';
+import { NETWORK_CONFIG } from '../utils/blockchain/networkConfig';
 
 const TxConfirmModal = ({ visible, txHash, onClose }) => {
     const { colors, shadows, isDark } = useTheme();
@@ -75,7 +80,7 @@ const TxConfirmModal = ({ visible, txHash, onClose }) => {
     if (!txHash) return null;
 
     const handleOpenExplorer = () => {
-        Linking.openURL(`${EXPLORER_URL}/tx/${txHash}`);
+        Linking.openURL(`${NETWORK_CONFIG.blockExplorerUrl}tx/${txHash}`);
     };
 
     return (
@@ -342,23 +347,36 @@ export default function RewardsScreen() {
         try {
             if (!nft) return;
             console.log(`🚀 Claim iniciado (${walletType}) para missionId:`, nft.id);
-            const timeout = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Timeout: la transacción tardó demasiado')), 120000)
+
+            const broadcastTimeout = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Timeout: no se pudo enviar la transacción')), 120000)
             );
             const result = await Promise.race([
-                handleClaim(nft.id, walletType),
-                timeout
+                handleClaim(nft.id, walletType, null, null, nft),
+                broadcastTimeout,
             ]);
-            console.log("Resultado del claim:", result);
-            if (result?.success) {
-                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                claimNFT(nft.id, result.txHash);
-                // ✅ Mostrar modal de confirmación con el txHash real
-                setShowDetail(false);
-                setTxConfirmation({ visible: true, txHash: result.txHash });
-            } else {
-                throw result?.error || new Error('Error desconocido');
+
+            if (!result?.success || !result.txHash) {
+                const err = result?.error;
+                throw new Error(err?.message || err || 'Error desconocido al enviar la transacción');
             }
+
+            console.log("📤 TX en mempool. Hash:", result.txHash, "— esperando confirmación on-chain...");
+
+            await waitForTransactionConfirmation(result.txHash);
+
+            console.log("✅ TX confirmada on-chain:", result.txHash);
+            await saveClaimedNftRecord({
+                recipient: result.recipient,
+                missionId: result.missionId,
+                txHash: result.txHash,
+                metadata: result.metadata,
+            });
+
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            claimNFT(nft.id, result.txHash);
+            setShowDetail(false);
+            setTxConfirmation({ visible: true, txHash: result.txHash });
         } catch (err) {
             console.error("Error en handleClaimNFT:", err);
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

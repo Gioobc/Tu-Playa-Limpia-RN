@@ -764,7 +764,7 @@ export default function ScanScreen() {
 
     const processReclaim = (mainType, rewardPoints) => {
         console.log(`[ScanScreen] Reclaiming ${rewardPoints} points for ${mainType}`);
-        const { unlockedNFT } = scanItem(mainType.toLowerCase().includes('plastic') ? 'plastic' : 'trash', rewardPoints);
+        const { newPoints } = scanItem(mainType.toLowerCase().includes('plastic') ? 'plastic' : 'trash', rewardPoints);
         
         // Sync to blockchain only if NOT admin
         const currentAddress = walletAddress || user.walletAddress;
@@ -779,7 +779,7 @@ export default function ScanScreen() {
             bottle_scans: scannedItems.bottles + (mainType.toLowerCase().includes('bottle') ? 1 : 0),
             can_scans: scannedItems.cans + (mainType.toLowerCase().includes('can') ? 1 : 0),
             plastic_scans: (scannedItems.plastic || 0) + (mainType.toLowerCase().includes('plastic') ? 1 : 0),
-            points: (points || 0) + rewardPoints,
+            points: newPoints,
             // Beach association: stores the beach where this scan happened.
             // scanned_beach_id is a single value (last beach scanned);
             // scanned_beaches is an array we append to via the backend endpoint.

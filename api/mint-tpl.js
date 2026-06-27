@@ -3,7 +3,8 @@ import { ethers } from 'ethers';
 // Syscoin NEVM Testnet Configuration
 const RPC_URL = process.env.BLOCKCHAIN_RPC_URL || 'https://rpc.tanenbaum.io';
 const CONTRACT_ADDRESS = process.env.EXPO_PUBLIC_TPL_TOKEN_ADDRESS || "0x6b5A158bD2558F5C484efE7dFC9E330213e8c6e8";
-const ADMIN_PRIVATE_KEY = process.env.EXPO_PUBLIC_ADMIN_PRIVATE_KEY;
+const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY || process.env.EXPO_PUBLIC_ADMIN_PRIVATE_KEY;
+const CHAIN_ID = parseInt(process.env.BLOCKCHAIN_CHAIN_ID || '5700', 10);
 
 const ABI = [
     "function mint(address to, uint256 amount) external",
@@ -45,8 +46,20 @@ export default async function handler(req, res) {
         const decimals = await contract.decimals();
         const amountInWei = ethers.utils.parseUnits(amount.toString(), decimals);
 
-        const tx = await contract.mint(address, amountInWei);
-        const receipt = await tx.wait();
+        const gasPrice = (await provider.getGasPrice()).mul(15).div(10);
+        const tx = await contract.mint(address, amountInWei, {
+            gasPrice,
+            gasLimit: 250000,
+            chainId: CHAIN_ID,
+        });
+        const txHash = tx.hash;
+
+        const receipt = await Promise.race([
+            tx.wait(1),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Timeout esperando confirmación on-chain')), 55000)
+            ),
+        ]);
 
         console.log(`✅ Minting complete. Hash: ${receipt.transactionHash}`);
 

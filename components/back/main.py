@@ -1,4 +1,4 @@
-import os, hashlib, requests, uuid
+import os, hashlib, requests, uuid, asyncio
 import bcrypt
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, BackgroundTasks
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -1100,17 +1100,19 @@ class RoboflowScanRequest(BaseModel):
 async def roboflow_scan_proxy(payload: RoboflowScanRequest):
     """
     Proxy para Roboflow — evita CORS en modo web.
-    - Si WORKSPACE+WORKFLOW están configurados: usa el endpoint de workflow.
-    - Si solo MODEL está configurado: usa inferencia directa (modelo).
+    - Si WORKSPACE+WORKFLOW están configurados: intenta el workflow primero.
+    - Si el workflow falla (ej. bug model_id en Roboflow): fallback al modelo directo.
     Devuelve { predictions: [...] } normalizado para ScanScreen.
     """
     logger.info(f"[Roboflow proxy] Request received. API_KEY={API_KEY[:4]}...{API_KEY[-4:] if API_KEY else 'NONE'} | MODEL_ID={MODEL_ID} | WORKSPACE={WORKSPACE} | WORKFLOW={WORKFLOW}")
     if not API_KEY:
         raise HTTPException(status_code=503, detail="ROBOFLOW_API_KEY no configurada en el servidor.")
 
+    workflow_used = False
+    rf_response = None
+
     try:
         if WORKSPACE and WORKFLOW:
-            # ── Modo Workflow ──────────────────────────────────────────────
             rf_url = f"https://serverless.roboflow.com/{WORKSPACE}/workflows/{WORKFLOW}"
             rf_response = requests.post(
                 rf_url,
@@ -1120,10 +1122,19 @@ async def roboflow_scan_proxy(payload: RoboflowScanRequest):
                 },
                 timeout=20,
             )
-        else:
-            # ── Modo Modelo Directo (beach-debris-ozfdf/1) ─────────────────
-            # La API de inferencia directa de Roboflow recibe:
-            # POST /model_id?api_key=KEY  con body = base64 plano
+            if rf_response.ok:
+                workflow_used = True
+            else:
+                logger.warning(
+                    f"[Roboflow proxy] Workflow falló ({rf_response.status_code}): "
+                    f"{rf_response.text[:200]}. Usando modelo directo {MODEL_ID}."
+                )
+
+        if not workflow_used:
+            if not MODEL_ID:
+                detail = rf_response.text[:300] if rf_response is not None else "ROBOFLOW_MODEL no configurado"
+                raise HTTPException(status_code=503, detail=f"Sin modelo de fallback: {detail}")
+
             rf_url = f"https://serverless.roboflow.com/{MODEL_ID}"
             rf_response = requests.post(
                 rf_url,
@@ -1148,10 +1159,8 @@ async def roboflow_scan_proxy(payload: RoboflowScanRequest):
 
     rf_data = rf_response.json()
 
-    # Normalizar predicciones según el tipo de respuesta
     predictions = []
-    if WORKSPACE and WORKFLOW:
-        # Workflow: { outputs: [{ <key>: { predictions: [...] } }] }
+    if workflow_used:
         first = None
         if isinstance(rf_data.get("outputs"), list) and rf_data["outputs"]:
             first = rf_data["outputs"][0]
@@ -1169,10 +1178,154 @@ async def roboflow_scan_proxy(payload: RoboflowScanRequest):
                     predictions = val
                     break
     else:
-        # Inferencia directa: { predictions: [...] }
         predictions = rf_data.get("predictions", [])
 
+    logger.info(f"[Roboflow proxy] OK — {len(predictions)} predicciones (workflow={workflow_used})")
     return {"predictions": predictions}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Mint TPL — sincroniza puntos del juego como tokens ERC-20 on-chain
+# ──────────────────────────────────────────────────────────────────────────────
+TPL_TOKEN_ADDRESS = os.environ.get("EXPO_PUBLIC_TPL_TOKEN_ADDRESS", "")
+ADMIN_PRIVATE_KEY = os.environ.get("ADMIN_PRIVATE_KEY") or os.environ.get("EXPO_PUBLIC_ADMIN_PRIVATE_KEY", "")
+BLOCKCHAIN_RPC_URL = os.environ.get("BLOCKCHAIN_RPC_URL", "https://rpc.tanenbaum.io")
+TPL_CHAIN_ID = int(os.environ.get("BLOCKCHAIN_CHAIN_ID", "5700"))
+
+TPL_MINT_ABI = [
+    {
+        "inputs": [
+            {"name": "to", "type": "address"},
+            {"name": "amount", "type": "uint256"},
+        ],
+        "name": "mint",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "decimals",
+        "outputs": [{"name": "", "type": "uint8"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+]
+
+
+class MintTPLRequest(BaseModel):
+    address: str
+    amount: float = Field(gt=0)
+
+
+_mint_tpl_lock = asyncio.Lock()
+
+
+def _send_mint_transaction(w3, account, contract, to_address: str, amount_wei: int, chain_id: int):
+    """Envía mint con nonce pending y reintentos si el gas es insuficiente para reemplazar."""
+    nonce = w3.eth.get_transaction_count(account.address, "pending")
+    base_gas = w3.eth.gas_price
+
+    last_error = None
+    for attempt, multiplier in enumerate((1.5, 2.0, 3.0), start=1):
+        gas_price = int(base_gas * multiplier)
+        tx = contract.functions.mint(to_address, amount_wei).build_transaction({
+            "from": account.address,
+            "nonce": nonce,
+            "gas": 250000,
+            "gasPrice": gas_price,
+            "chainId": chain_id,
+        })
+        signed = account.sign_transaction(tx)
+        raw_tx = getattr(signed, "raw_transaction", None) or signed.rawTransaction
+        try:
+            tx_hash = w3.eth.send_raw_transaction(raw_tx)
+            logger.info(f"[mint-tpl] TX enviada (intento {attempt}, gas={gas_price}, nonce={nonce})")
+            return tx_hash
+        except Exception as exc:
+            last_error = exc
+            err = str(exc).lower()
+            if "underpriced" in err or "replacement" in err:
+                logger.warning(f"[mint-tpl] Gas bajo en intento {attempt}, reintentando con más gas...")
+                continue
+            raise
+
+    raise last_error or RuntimeError("No se pudo enviar la transacción de mint")
+
+
+def _poll_tx_receipt(w3, tx_hash: bytes, timeout_sec: int = 600):
+    import time
+    from web3.exceptions import TransactionNotFound
+
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        try:
+            receipt = w3.eth.get_transaction_receipt(tx_hash)
+            if receipt is not None:
+                if receipt.get("status", 0) != 1:
+                    raise HTTPException(status_code=500, detail="La transacción de mint fue revertida en la red")
+                return receipt
+        except TransactionNotFound:
+            pass
+        except HTTPException:
+            raise
+        except Exception as exc:
+            if "not found" not in str(exc).lower():
+                raise
+        time.sleep(4)
+    raise HTTPException(
+        status_code=504,
+        detail="La transacción fue enviada pero no se confirmó a tiempo. Revisa el explorer con el hash.",
+    )
+
+
+@app.post("/api/mint-tpl")
+async def mint_tpl_tokens(payload: MintTPLRequest):
+    """Mintea tokens TPL al wallet del usuario (solo owner del contrato)."""
+    if not ADMIN_PRIVATE_KEY:
+        raise HTTPException(status_code=503, detail="ADMIN_PRIVATE_KEY no configurada en el servidor.")
+    if not TPL_TOKEN_ADDRESS:
+        raise HTTPException(status_code=503, detail="EXPO_PUBLIC_TPL_TOKEN_ADDRESS no configurada.")
+
+    async with _mint_tpl_lock:
+        try:
+            from web3 import Web3
+            from eth_account import Account
+
+            w3 = Web3(Web3.HTTPProvider(BLOCKCHAIN_RPC_URL))
+            if not w3.is_connected():
+                raise HTTPException(status_code=502, detail="No se pudo conectar al RPC de la blockchain.")
+
+            account = Account.from_key(ADMIN_PRIVATE_KEY)
+            contract = w3.eth.contract(
+                address=Web3.to_checksum_address(TPL_TOKEN_ADDRESS),
+                abi=TPL_MINT_ABI,
+            )
+
+            decimals = contract.functions.decimals().call()
+            amount_wei = int(float(payload.amount) * (10 ** decimals))
+            to_address = Web3.to_checksum_address(payload.address)
+
+            tx_hash = _send_mint_transaction(
+                w3, account, contract, to_address, amount_wei, TPL_CHAIN_ID
+            )
+            tx_hex = tx_hash.hex() if hasattr(tx_hash, "hex") else Web3.to_hex(tx_hash)
+
+            logger.info(f"[mint-tpl] TX en mempool: {tx_hex} | {payload.amount} TPL → {payload.address}")
+            _poll_tx_receipt(w3, tx_hash)
+
+            logger.info(f"[mint-tpl] Confirmado: {tx_hex}")
+            return {
+                "success": True,
+                "hash": tx_hex,
+                "message": f"Tokens minted successfully to {payload.address}",
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[mint-tpl] Error: {e}")
+            raise HTTPException(status_code=500, detail=f"Transaction failed: {str(e)}")
 
 
 # reload: 19:21:00

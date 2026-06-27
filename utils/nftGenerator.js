@@ -452,6 +452,66 @@ const connectViaPali = async () => {
 };
 
 // ---------------------------------------------------------------------------
+// Confirmación on-chain (polling manual — evita el timeout de 120s de ethers v5)
+// ---------------------------------------------------------------------------
+export async function waitForTransactionConfirmation(txHash, { timeoutMs = 600000, pollIntervalMs = 4000 } = {}) {
+  if (!txHash) throw new Error('Hash de transacción no disponible');
+
+  const provider = new ethers.providers.JsonRpcProvider(NETWORK_CONFIG.rpcUrl);
+  const deadline = Date.now() + timeoutMs;
+  let attempts = 0;
+
+  while (Date.now() < deadline) {
+    attempts += 1;
+    try {
+      const receipt = await provider.getTransactionReceipt(txHash);
+      if (receipt) {
+        if (receipt.status === 0) throw new Error('La transacción fue revertida en la red');
+        console.log(`✅ Confirmación on-chain (intento ${attempts}): bloque ${receipt.blockNumber}`);
+        return receipt;
+      }
+    } catch (err) {
+      if (err.message?.includes('revertida')) throw err;
+      console.warn(`[poll ${attempts}] RPC:`, err.message);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+
+  throw new Error(
+    'La transacción fue enviada pero no se confirmó a tiempo. Revisa el explorer con tu hash.'
+  );
+}
+
+async function getMintTxOverrides(provider) {
+  const gasPrice = await provider.getGasPrice();
+  return {
+    gasPrice: gasPrice.mul(15).div(10),
+    gasLimit: 800000,
+  };
+}
+
+export async function saveClaimedNftRecord({ recipient, missionId, txHash, metadata }) {
+  try {
+    const appUrl = process.env.EXPO_PUBLIC_APP_URL || 'https://tu-playa-limpia.vercel.app';
+    await fetch(`${appUrl}/api/nfts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wallet: recipient,
+        missionId,
+        txHash,
+        metadata,
+        nftLocalId: String(missionId),
+      }),
+    });
+    console.log('💾 NFT guardado en MongoDB');
+  } catch (mongoErr) {
+    console.warn('⚠️ No se pudo guardar en MongoDB (el NFT sí fue minteado):', mongoErr.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // handleClaim
 // ---------------------------------------------------------------------------
 export const handleClaim = async (
@@ -459,6 +519,7 @@ export const handleClaim = async (
   walletType = 'pali',
   externalSigner = null,
   adminMintViaBackend = null,
+  sourceNft = null,
 ) => {
   try {
     let provider;
@@ -488,15 +549,22 @@ export const handleClaim = async (
     console.log("📍 Cuenta activa:", recipient);
 
     // --- 2. Firma de aceptación del usuario ---
-    const message = `Tu Playa Limpia: Acepto reclamar el NFT de la misión #${missionId}`;
+    const claimLabel = sourceNft?.title?.trim() || `misión #${missionId}`;
+    const message = `Tu Playa Limpia: Acepto reclamar el NFT de ${claimLabel}`;
     console.log("✍️ Pidiendo firma de aceptación...");
     await signer.signMessage(message);
     console.log("✅ Aceptación firmada.");
 
-    // --- 3. Generar metadata del NFT ---
-    const nftData = generateNFTAttributes();
+    // --- 3. Generar metadata del NFT (usa los datos de la card si existen) ---
+    const hasCardAttributes = Array.isArray(sourceNft?.attributes) && sourceNft.attributes.length > 0;
+    const nftData = hasCardAttributes
+      ? {
+          attributes: sourceNft.attributes,
+          description: sourceNft.description || generateNFTAttributes().description,
+        }
+      : generateNFTAttributes();
     const metadata = {
-      name: "Eco Guardian NFT",
+      name: sourceNft?.title?.trim() || "Eco Guardian NFT",
       description: nftData.description,
       attributes: nftData.attributes,
     };
@@ -522,33 +590,13 @@ export const handleClaim = async (
       const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, adminWallet);
 
       console.log("\u23F3 Enviando minteo desde Admin (modo dev)...");
-      const tx = await contract.adminMint(recipient, missionId, tokenURI);
-      await tx.wait();
+      const txOverrides = await getMintTxOverrides(adminTransport);
+      const tx = await contract.adminMint(recipient, missionId, tokenURI, txOverrides);
       txHash = tx.hash;
+      console.log("📤 TX enviada a la red. Hash:", txHash, "| gasPrice:", txOverrides.gasPrice.toString());
     }
 
-    console.log("🎉 NFT minteado. TX:", txHash);
-
-    // --- 5. Guardar registro en MongoDB (silencioso, no bloquea el flujo) ---
-    try {
-      const appUrl = process.env.EXPO_PUBLIC_APP_URL || 'https://tu-playa-limpia.vercel.app';
-      await fetch(`${appUrl}/api/nfts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          wallet: recipient,
-          missionId,
-          txHash,
-          metadata,
-          nftLocalId: String(missionId),
-        }),
-      });
-      console.log('💾 NFT guardado en MongoDB');
-    } catch (mongoErr) {
-      console.warn('⚠️ No se pudo guardar en MongoDB (el NFT sí fue minteado):', mongoErr.message);
-    }
-
-    return { success: true, txHash };
+    return { success: true, txHash, metadata, recipient, missionId };
 
   } catch (error) {
     console.error("Error al mintear:", error);

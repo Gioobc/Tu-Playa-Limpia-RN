@@ -65,7 +65,6 @@ export async function runRoboflowWorkflow(base64Data, config) {
     while (attempt <= retries) {
         try {
             if (isProxy) {
-                // Proxy routing to the backend
                 const data = await executeJsonRequest(`${baseUrl}/roboflow/scan`, { image: base64Data });
                 return data.predictions || [];
             } else {

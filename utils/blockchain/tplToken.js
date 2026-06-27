@@ -27,8 +27,12 @@ export const fetchUserTitle = async (address, customProvider = null) => {
 
 export const fetchTPLBalance = async (address, customProvider = null) => {
     try {
+        if (!address) return "0";
+
+        const JsonRpcProvider = ethers.providers?.JsonRpcProvider;
         const Web3Provider = ethers.providers?.Web3Provider || ethers.BrowserProvider;
         const provider = customProvider ||
+            (JsonRpcProvider ? new JsonRpcProvider(NETWORK_CONFIG.rpcUrl) : null) ||
             (window.ethereum ? new Web3Provider(window.ethereum, "any") : null);
 
         if (!provider) return "0";
